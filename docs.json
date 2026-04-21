@@ -1,0 +1,102 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "luma",
+  "name": "LumiqTrace",
+  "colors": {
+    "primary": "#7c7c7c",
+    "light": "#080808",
+    "dark": "#c1c1c1"
+  },
+  "favicon": "https://media.brand.dev/4df870fc-c790-482f-9c7a-c7adeafd16f0.png",
+  "logo": {
+    "light": "https://media.brand.dev/f81a25db-0f7d-4772-924d-272c1eadfbb2.svg",
+    "dark": "https://media.brand.dev/c8fbe76b-ded9-43ef-9fa5-5cddf153b7cd.png"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/lumiqtrace"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "concepts"
+            ]
+          },
+          {
+            "group": "SDK",
+            "pages": [
+              "sdk/typescript",
+              "sdk/python",
+              "sdk/integrations",
+              "sdk/agent-tracing",
+              "sdk/manual-spans",
+              "sdk/guardrails",
+              "sdk/prompt-management"
+            ]
+          },
+          {
+            "group": "Dashboard",
+            "pages": [
+              "dashboard/overview",
+              "dashboard/traces",
+              "dashboard/costs",
+              "dashboard/ai-features",
+              "dashboard/alerts"
+            ]
+          },
+          {
+            "group": "Account & Billing",
+            "pages": [
+              "account/organizations",
+              "account/api-keys",
+              "account/billing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api-reference/authentication",
+              "api-reference/errors"
+            ]
+          },
+          {
+            "group": "Ingest",
+            "pages": [
+              "api-reference/ingest"
+            ]
+          },
+          {
+            "group": "Data",
+            "pages": [
+              "api-reference/events",
+              "api-reference/traces",
+              "api-reference/metrics"
+            ]
+          },
+          {
+            "group": "AI Features",
+            "pages": [
+              "api-reference/ai-cost-optimizer",
+              "api-reference/ai-nl-query",
+              "api-reference/ai-root-cause"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

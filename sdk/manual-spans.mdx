@@ -1,0 +1,206 @@
+---
+title: "Manual spans — tracing custom operations"
+sidebarTitle: "Manual spans"
+description: "Use startSpan to instrument RAG pipelines, custom model wrappers, evaluation harnesses, and any non-LLM operation you want to appear in your LumiqTrace traces."
+---
+
+The automatic wrappers handle LLM providers, but many real-world workflows involve operations that are not direct LLM calls — document retrieval, embedding pipelines, custom model APIs, and post-generation evaluation. `startSpan` lets you create a custom span for any of these, with the same trace context propagation as wrapped LLM calls.
+
+## When to use manual spans
+
+Use `startSpan` when you want to trace:
+
+- **RAG pipelines** — measure retrieval latency and track retrieved context separately from the LLM call
+- **Custom model wrappers** — a self-hosted model or a provider not covered by a built-in wrapper
+- **Evaluation harnesses** — attach faithfulness, relevance, or custom metric scores to a span
+- **Multi-step workflows** — break a complex pipeline into named segments for easier debugging
+
+## Basic usage
+
+`startSpan` returns an object with a `span` handle and a `run` helper. Call `span.end()` in a `finally` block to guarantee the span is always closed.
+
+```typescript
+import { lumiqtrace, startSpan } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+async function runRagPipeline(query: string): Promise<string> {
+  const { span } = startSpan({
+    name: "rag-pipeline",
+    provider: "custom",
+  });
+
+  try {
+    const docs = await retrieveDocuments(query);
+    const answer = await generateAnswer(query, docs);
+
+    // Attach an evaluation score before closing the span
+    span.setEvalScore("faithfulness", 0.92);
+    span.setEvalScore("relevance", 0.85);
+
+    await span.end({
+      status: "success",
+      input_tokens: 350,
+      output_tokens: 120,
+      cost_usd: 0.0042,
+    });
+
+    return answer;
+  } catch (err) {
+    await span.end({
+      status: "error",
+      error_message: String(err),
+    });
+    throw err; // Always re-throw — never swallow errors
+  }
+}
+```
+
+<Warning>
+  Always re-throw errors after calling `span.end({ status: "error" })`. Swallowing errors hides failures from your application and from the LumiqTrace error dashboard.
+</Warning>
+
+## `startSpan` options
+
+<ParamField body="name" type="string" required>
+  Name of the operation. Appears as the span label in the trace flame graph.
+</ParamField>
+
+<ParamField body="model" type="string" default="custom">
+  Model identifier, if applicable. Use the exact model string (e.g. `"text-embedding-3-small"`) so cost estimates work correctly.
+</ParamField>
+
+<ParamField body="provider" type="string" default="custom">
+  Provider name, e.g. `"openai"`, `"anthropic"`, `"custom"`. Used for grouping in the provider breakdown view.
+</ParamField>
+
+<ParamField body="span_kind" type="string">
+  Span kind hint. Accepts `"llm"`, `"tool"`, `"agent"`, `"retriever"`, `"general"`. Defaults to `"general"` when called outside a `withAgent` block.
+</ParamField>
+
+## `span` methods
+
+### `span.setEvalScore(name, value)`
+
+Attaches a named numeric score to the span. Scores appear in the evaluations tab and can be trended over time.
+
+```typescript
+span.setEvalScore("faithfulness", 0.92);
+span.setEvalScore("groundedness", 0.78);
+```
+
+Call `setEvalScore` any number of times before `span.end()`. All scores are sent together when the span closes.
+
+### `span.end(options)`
+
+Closes the span and enqueues the event. Must be called exactly once.
+
+<ParamField body="status" type="string" required>
+  Outcome of the operation. Accepted values: `"success"`, `"error"`, `"timeout"`, `"rate_limited"`, `"cancelled"`.
+</ParamField>
+
+<ParamField body="input_tokens" type="number">
+  Number of input/prompt tokens consumed. Used for cost calculation.
+</ParamField>
+
+<ParamField body="output_tokens" type="number">
+  Number of output/completion tokens generated.
+</ParamField>
+
+<ParamField body="cost_usd" type="number">
+  Actual cost in USD, if known. Overrides any computed cost estimate.
+</ParamField>
+
+<ParamField body="error_message" type="string">
+  Error description when `status` is `"error"`. Truncated to 500 characters.
+</ParamField>
+
+## Propagating context to nested calls
+
+Use the `run` helper returned by `startSpan` to run a function inside the span's context. Wrapped LLM calls made inside `run` automatically link to this span as their parent.
+
+```typescript
+const { span, run } = startSpan({ name: "rag-pipeline" });
+
+try {
+  const answer = await run(async () => {
+    // This OpenAI call is linked as a child of the rag-pipeline span
+    return openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: query }],
+    });
+  });
+
+  await span.end({ status: "success" });
+  return answer;
+} catch (err) {
+  await span.end({ status: "error", error_message: String(err) });
+  throw err;
+}
+```
+
+## Complete RAG pipeline example
+
+This example shows a full retrieval-augmented generation pipeline with per-phase spans and evaluation scores.
+
+```typescript
+import { lumiqtrace, startSpan, withLumiqtraceContext } from "@lumiqtrace/sdk";
+import OpenAI from "openai";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+const openai = lumiqtrace.wrapOpenAI(new OpenAI());
+
+async function handleQuery(userId: string, query: string): Promise<string> {
+  return withLumiqtraceContext({ userId }, async () => {
+    // Outer span for the full pipeline
+    const { span: pipelineSpan, run } = startSpan({
+      name: "rag-pipeline",
+      provider: "custom",
+    });
+
+    try {
+      // Inner span for retrieval only
+      const { span: retrievalSpan } = startSpan({ name: "document-retrieval" });
+      let docs: string[];
+      try {
+        docs = await retrieveDocuments(query);
+        await retrievalSpan.end({ status: "success" });
+      } catch (err) {
+        await retrievalSpan.end({ status: "error", error_message: String(err) });
+        throw err;
+      }
+
+      // LLM call inside the outer pipeline context
+      const response = await run(() =>
+        openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            { role: "system", content: `Context:\n${docs.join("\n\n")}` },
+            { role: "user", content: query },
+          ],
+        })
+      );
+
+      const answer = response.choices[0].message.content ?? "";
+
+      // Evaluate and score the answer
+      const faithfulness = await evaluateFaithfulness(answer, docs);
+      pipelineSpan.setEvalScore("faithfulness", faithfulness);
+
+      await pipelineSpan.end({
+        status: "success",
+        input_tokens: response.usage?.prompt_tokens,
+        output_tokens: response.usage?.completion_tokens,
+      });
+
+      return answer;
+    } catch (err) {
+      await pipelineSpan.end({
+        status: "error",
+        error_message: String(err),
+      });
+      throw err;
+    }
+  });
+}
+```

@@ -1,0 +1,234 @@
+---
+title: "Ingest Events — LumiqTrace API"
+sidebarTitle: "Ingest Events"
+description: "POST /v1/ingest — send LLM events to LumiqTrace as gzip-compressed NDJSON. Accepts up to 100 events per batch. Returns 202 Accepted with event count."
+---
+
+The ingest endpoint is the entry point for all LLM event data you send to LumiqTrace. You post newline-delimited JSON (NDJSON) — one event object per line — and the platform buffers and processes the data asynchronously. Most integrations use the LumiqTrace SDK, which handles batching, compression, and retries automatically. Use this endpoint directly if you are building a custom integration or sending events from an environment where the SDK is not available.
+
+## Endpoint
+
+```
+POST https://api.lumiqtrace.com/v1/ingest
+```
+
+**Authentication:** `x-api-key` header (see [Authentication](/api-reference/authentication))
+
+## Request Headers
+
+| Header | Value | Required |
+|--------|-------|----------|
+| `x-api-key` | `lqt_your_api_key` | Yes |
+| `Content-Type` | `application/x-ndjson` | Yes |
+| `Content-Encoding` | `gzip` | Recommended |
+
+<Note>
+Gzip compression is strongly recommended. LLM event payloads compress very well — you can expect 5–10x size reduction, which reduces latency and bandwidth costs significantly.
+</Note>
+
+## Request Body
+
+The body must be newline-delimited JSON: one complete JSON event object per line, separated by `\n`. The maximum is **100 events per request**. If you have more than 100 events to send, split them into multiple requests.
+
+## Event Schema
+
+<ParamField body="event_id" type="string" required>
+  A UUIDv4 uniquely identifying this event. Used for deduplication — submitting the same `event_id` twice will not create a duplicate record.
+</ParamField>
+
+<ParamField body="trace_id" type="string" required>
+  Groups related spans into a single trace. All spans in one user request should share the same `trace_id`.
+</ParamField>
+
+<ParamField body="span_id" type="string" required>
+  Uniquely identifies this span within the trace.
+</ParamField>
+
+<ParamField body="parent_span_id" type="string">
+  The `span_id` of the parent span. Omit for root spans. Used to build the nested span tree in the [Trace viewer](/api-reference/traces).
+</ParamField>
+
+<ParamField body="timestamp" type="string" required>
+  ISO 8601 UTC timestamp for when the LLM call began. Example: `"2026-04-20T10:00:00.000Z"`.
+</ParamField>
+
+<ParamField body="provider" type="string" required>
+  The LLM provider. One of `"openai"`, `"anthropic"`, `"google"`, or `"custom"`.
+</ParamField>
+
+<ParamField body="model" type="string" required>
+  The model identifier as returned by the provider. Example: `"gpt-4o"`, `"claude-sonnet-4-6"`, `"gemini-2.5-flash"`.
+</ParamField>
+
+<ParamField body="operation" type="string" required>
+  The type of LLM operation. One of `"chat"`, `"embed"`, `"image"`, `"tts"`, or `"custom"`.
+</ParamField>
+
+<ParamField body="latency_ms" type="number" required>
+  Total time in milliseconds from request sent to full response received.
+</ParamField>
+
+<ParamField body="ttft_ms" type="number">
+  Time to first token in milliseconds. Only relevant for streaming responses.
+</ParamField>
+
+<ParamField body="input_tokens" type="number" required>
+  Number of tokens in the prompt / input.
+</ParamField>
+
+<ParamField body="output_tokens" type="number" required>
+  Number of tokens in the model's response.
+</ParamField>
+
+<ParamField body="cached_tokens" type="number">
+  Number of input tokens served from the provider's prompt cache. Used to calculate cache savings.
+</ParamField>
+
+<ParamField body="cost_usd" type="number" required>
+  Total cost of this call in US dollars, calculated by your SDK using current provider pricing.
+</ParamField>
+
+<ParamField body="status" type="string" required>
+  Outcome of the call. One of `"success"`, `"error"`, `"timeout"`, `"rate_limited"`, or `"cancelled"`.
+</ParamField>
+
+<ParamField body="error_code" type="string">
+  Provider error code, if any. Example: `"context_length_exceeded"`.
+</ParamField>
+
+<ParamField body="error_message" type="string">
+  Human-readable error message from the provider.
+</ParamField>
+
+<ParamField body="finish_reason" type="string">
+  The reason the model stopped generating. Example: `"stop"`, `"length"`, `"tool_calls"`.
+</ParamField>
+
+<ParamField body="stream" type="boolean" required>
+  Whether this call used streaming (`true`) or a blocking response (`false`).
+</ParamField>
+
+<ParamField body="environment" type="string" required>
+  The deployment environment. Example: `"production"`, `"staging"`, `"development"`.
+</ParamField>
+
+<ParamField body="user_id" type="string">
+  Your application's user identifier. Used for per-user cost and usage analytics.
+</ParamField>
+
+<ParamField body="session_id" type="string">
+  Identifier for a user session grouping multiple traces.
+</ParamField>
+
+<ParamField body="tags" type="object">
+  Free-form key-value string pairs for custom segmentation. Example: `{ "feature": "summarizer", "team": "growth" }`.
+</ParamField>
+
+<ParamField body="tools_used" type="string[]">
+  Names of any tools or functions called during this LLM turn.
+</ParamField>
+
+<ParamField body="eval_scores" type="object">
+  Custom evaluation scores as a map of metric name to numeric value. Example: `{ "faithfulness": 0.94 }`.
+</ParamField>
+
+<ParamField body="prompt_hash" type="string">
+  A hash of the prompt template, used to track prompt version performance over time.
+</ParamField>
+
+<ParamField body="sdk_version" type="string" required>
+  The version of the LumiqTrace SDK sending this event. Example: `"1.4.2"`.
+</ParamField>
+
+## Example Request
+
+The example below sends two events as gzip-compressed NDJSON.
+
+<CodeGroup>
+```bash curl
+printf '{"event_id":"550e8400-e29b-41d4-a716-446655440001","trace_id":"trace-abc","span_id":"span-001","timestamp":"2026-04-20T10:00:00.000Z","provider":"openai","model":"gpt-4o","operation":"chat","latency_ms":843,"input_tokens":512,"output_tokens":128,"cost_usd":0.0034,"status":"success","stream":false,"environment":"production","sdk_version":"1.4.2"}\n{"event_id":"550e8400-e29b-41d4-a716-446655440002","trace_id":"trace-abc","span_id":"span-002","parent_span_id":"span-001","timestamp":"2026-04-20T10:00:01.200Z","provider":"openai","model":"text-embedding-3-small","operation":"embed","latency_ms":120,"input_tokens":64,"output_tokens":0,"cost_usd":0.000013,"status":"success","stream":false,"environment":"production","sdk_version":"1.4.2"}' \
+  | gzip \
+  | curl -X POST https://api.lumiqtrace.com/v1/ingest \
+      -H "x-api-key: lqt_your_api_key_here" \
+      -H "Content-Type: application/x-ndjson" \
+      -H "Content-Encoding: gzip" \
+      --data-binary @-
+```
+
+```typescript TypeScript
+import { gzipSync } from "zlib";
+
+const events = [
+  {
+    event_id: "550e8400-e29b-41d4-a716-446655440001",
+    trace_id: "trace-abc",
+    span_id: "span-001",
+    timestamp: "2026-04-20T10:00:00.000Z",
+    provider: "openai",
+    model: "gpt-4o",
+    operation: "chat",
+    latency_ms: 843,
+    input_tokens: 512,
+    output_tokens: 128,
+    cost_usd: 0.0034,
+    status: "success",
+    stream: false,
+    environment: "production",
+    sdk_version: "1.4.2",
+  },
+  {
+    event_id: "550e8400-e29b-41d4-a716-446655440002",
+    trace_id: "trace-abc",
+    span_id: "span-002",
+    parent_span_id: "span-001",
+    timestamp: "2026-04-20T10:00:01.200Z",
+    provider: "openai",
+    model: "text-embedding-3-small",
+    operation: "embed",
+    latency_ms: 120,
+    input_tokens: 64,
+    output_tokens: 0,
+    cost_usd: 0.000013,
+    status: "success",
+    stream: false,
+    environment: "production",
+    sdk_version: "1.4.2",
+  },
+];
+
+const ndjson = events.map((e) => JSON.stringify(e)).join("\n");
+const compressed = gzipSync(Buffer.from(ndjson));
+
+const response = await fetch("https://api.lumiqtrace.com/v1/ingest", {
+  method: "POST",
+  headers: {
+    "x-api-key": "lqt_your_api_key_here",
+    "Content-Type": "application/x-ndjson",
+    "Content-Encoding": "gzip",
+  },
+  body: compressed,
+});
+```
+</CodeGroup>
+
+## Response
+
+**202 Accepted** — The batch was accepted for asynchronous processing. The `accepted` count reflects how many events were queued.
+
+```json
+{
+  "accepted": 2
+}
+```
+
+<ResponseField name="accepted" type="number">
+  The number of events accepted into the processing queue.
+</ResponseField>
+
+## Error Responses
+
+| Status | Condition |
+|--------|-----------|
+| `400` | More than 100 events in the request body. |
+| `401` | Missing or invalid `x-api-key`. |
+| `429` | Monthly event quota exceeded for your organization. |

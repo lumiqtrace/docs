@@ -1,0 +1,137 @@
+{
+  "projectType": "saas",
+  "projectName": "LumiqTrace",
+  "projectDescription": "LLM observability and AI intelligence platform that helps developers monitor, debug, and optimize every LLM call across their applications.",
+  "theme": "luma",
+  "primaryColor": "#7c7c7c",
+  "lightColor": "#080808",
+  "darkColor": "#c1c1c1",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "concepts"
+            ]
+          },
+          {
+            "group": "SDK",
+            "pages": [
+              "sdk/typescript",
+              "sdk/python",
+              "sdk/integrations",
+              "sdk/agent-tracing",
+              "sdk/manual-spans",
+              "sdk/guardrails",
+              "sdk/prompt-management"
+            ]
+          },
+          {
+            "group": "Dashboard",
+            "pages": [
+              "dashboard/overview",
+              "dashboard/traces",
+              "dashboard/costs",
+              "dashboard/ai-features",
+              "dashboard/alerts"
+            ]
+          },
+          {
+            "group": "Account & Billing",
+            "pages": [
+              "account/organizations",
+              "account/api-keys",
+              "account/billing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api-reference/authentication",
+              "api-reference/errors"
+            ]
+          },
+          {
+            "group": "Ingest",
+            "pages": [
+              "api-reference/ingest"
+            ]
+          },
+          {
+            "group": "Data",
+            "pages": [
+              "api-reference/events",
+              "api-reference/traces",
+              "api-reference/metrics"
+            ]
+          },
+          {
+            "group": "AI Features",
+            "pages": [
+              "api-reference/ai-cost-optimizer",
+              "api-reference/ai-nl-query",
+              "api-reference/ai-root-cause"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Automatic LLM call tracing with zero-config wrappers for OpenAI, Anthropic, and Google Gemini",
+    "Real-time cost tracking and token usage analytics per model, project, and user",
+    "Multi-agent tracing with hierarchical span visualization and FlameGraph",
+    "AI-powered cost optimizer with actionable recommendations (Claude Sonnet)",
+    "Anomaly detection with automatic explanations (Gemini Flash)",
+    "Natural language query over trace data",
+    "Root cause analysis for failed traces using Claude Extended Thinking",
+    "Prompt management with versioning, labels, and runtime fetching",
+    "Guardrails for pre/post LLM content checking",
+    "LangChain and Google ADK native integrations",
+    "Multi-tenant organization management with RBAC",
+    "Configurable alerts with email and webhook notifications",
+    "OpenTelemetry-compatible tracing export"
+  ],
+  "publicApiSurface": [
+    "init(opts) / initLumiqtrace(opts)",
+    "wrapOpenAI(client)",
+    "wrapAnthropic(client)",
+    "wrapGoogle(client)",
+    "wrapOpenRouter(client)",
+    "startSpan(opts)",
+    "withAgent(opts, fn)",
+    "withLumiqtraceContext(opts, fn)",
+    "LumiqtraceCallbackHandler (LangChain)",
+    "wrapADKAgent / wrapADKRunner / instrumentADK (Google ADK)",
+    "PromptClient.get(name, opts)",
+    "PromptClient.create(params)",
+    "PromptClient.compile(prompt, variables)",
+    "GuardrailBlockedError",
+    "initOTel(config)",
+    "lumiqtrace.init() / patch_openai() [Python]",
+    "@trace decorator [Python]",
+    "with_agent context manager [Python]",
+    "POST /v1/ingest",
+    "GET /v1/projects/:id/overview",
+    "GET /v1/events",
+    "GET /v1/traces/:traceId",
+    "GET /v1/costs",
+    "GET /v1/performance",
+    "GET /v1/errors",
+    "GET /v1/ai/cost-optimizer",
+    "POST /v1/ai/nl-query",
+    "POST /v1/ai/root-cause/:traceId",
+    "GET /v1/prompts/:name",
+    "POST /v1/prompts"
+  ]
+}

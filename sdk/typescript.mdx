@@ -1,0 +1,240 @@
+---
+title: "TypeScript SDK — @lumiqtrace/sdk"
+sidebarTitle: "TypeScript SDK"
+description: "Install and configure the LumiqTrace TypeScript SDK to automatically trace OpenAI, Anthropic, Google, and OpenRouter LLM calls with zero code changes."
+---
+
+The TypeScript SDK wraps your existing LLM client instances and automatically captures latency, token counts, costs, and errors for every call — with no changes to your application logic beyond initialization.
+
+## Installation
+
+<Steps>
+  <Step title="Install the package">
+    ```bash
+    npm install @lumiqtrace/sdk
+    ```
+
+    All provider integrations are optional peer dependencies. Install only what you use:
+
+    ```bash
+    # OpenAI
+    npm install openai
+
+    # Anthropic
+    npm install @anthropic-ai/sdk
+
+    # Google Generative AI
+    npm install @google/generative-ai
+
+    # LangChain
+    npm install @langchain/core
+    ```
+  </Step>
+
+  <Step title="Initialize LumiqTrace">
+    Call `lumiqtrace.init()` once at application startup, before any LLM calls are made.
+
+    ```typescript
+    import { lumiqtrace } from "@lumiqtrace/sdk";
+
+    lumiqtrace.init({
+      apiKey: process.env.LUMIQTRACE_API_KEY!,
+      environment: "production",
+    });
+    ```
+  </Step>
+
+  <Step title="Wrap your LLM client">
+    Pass your client instance through the appropriate wrapper function. The wrapper returns the same client — your existing code continues to work unchanged.
+
+    ```typescript
+    import OpenAI from "openai";
+    import { lumiqtrace } from "@lumiqtrace/sdk";
+
+    const openai = lumiqtrace.wrapOpenAI(new OpenAI());
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: "Hello!" }],
+    });
+    ```
+  </Step>
+</Steps>
+
+## Init options
+
+`lumiqtrace.init(options)` accepts the following configuration:
+
+<ParamField body="apiKey" type="string" required>
+  Your LumiqTrace API key. Must start with `lqt_`. Find this in your project settings.
+</ParamField>
+
+<ParamField body="environment" type="string" default="production">
+  Environment label attached to every event. Use `"staging"` or `"development"` to separate traces by environment.
+</ParamField>
+
+<ParamField body="storePrompts" type="boolean" default="false">
+  When `true`, prompt text and completion text are stored alongside traces. Disabled by default for privacy. Enable only after reviewing your data retention policy.
+</ParamField>
+
+<ParamField body="sampleRate" type="number" default="1.0">
+  Fraction of events to send, between `0.0` and `1.0`. Set to `0.1` to trace 10% of calls. Useful for high-volume production applications.
+</ParamField>
+
+<ParamField body="redactKeys" type="string[]" default='["password", "secret", "token", "api_key"]'>
+  Keys whose values are redacted before any data is stored. Applied regardless of `storePrompts`.
+</ParamField>
+
+<ParamField body="debug" type="boolean" default="false">
+  When `true`, logs internal errors to the console. Enable during integration testing.
+</ParamField>
+
+<ParamField body="batchSize" type="number" default="50">
+  Number of events to accumulate before flushing. Events are also flushed every `flushInterval` milliseconds.
+</ParamField>
+
+<ParamField body="flushInterval" type="number" default="2000">
+  Milliseconds between automatic flushes. The SDK also flushes on process exit.
+</ParamField>
+
+<ParamField body="baseURL" type="string" default="https://api.lumiqtrace.com">
+  Override the API base URL. Use this only if you are self-hosting the ingest endpoint.
+</ParamField>
+
+<ParamField body="enableOTel" type="boolean" default="false">
+  When `true`, also exports spans to an OpenTelemetry-compatible backend. Requires `otelEndpoint` or a configured OTEL exporter.
+</ParamField>
+
+## Wrapping providers
+
+### OpenAI
+
+`wrapOpenAI(client)` patches `client.chat.completions.create` for both streaming and non-streaming calls. Cached token counts are extracted from `prompt_tokens_details.cached_tokens`.
+
+```typescript
+import OpenAI from "openai";
+import { lumiqtrace } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+const openai = lumiqtrace.wrapOpenAI(new OpenAI());
+
+// Non-streaming
+const response = await openai.chat.completions.create({
+  model: "gpt-4o",
+  messages: [{ role: "user", content: "Summarize this article." }],
+});
+
+// Streaming — TTFT (time to first token) is captured automatically
+const stream = await openai.chat.completions.create({
+  model: "gpt-4o",
+  messages: [{ role: "user", content: "Write a poem." }],
+  stream: true,
+});
+for await (const chunk of stream) {
+  process.stdout.write(chunk.choices[0]?.delta?.content ?? "");
+}
+```
+
+<Note>
+  TTFT is measured from the call start to the first non-empty chunk and appears as `ttft_ms` in your LumiqTrace dashboard.
+</Note>
+
+### Anthropic
+
+`wrapAnthropic(client)` patches `client.messages.create`. Token fields are extracted from `result.usage.input_tokens`, `output_tokens`, and `cache_read_input_tokens`.
+
+```typescript
+import Anthropic from "@anthropic-ai/sdk";
+import { lumiqtrace } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+const anthropic = lumiqtrace.wrapAnthropic(new Anthropic());
+
+const message = await anthropic.messages.create({
+  model: "claude-sonnet-4-6",
+  max_tokens: 1024,
+  messages: [{ role: "user", content: "Explain monads in plain English." }],
+});
+```
+
+<Note>
+  Prompt cache read tokens (`cache_read_input_tokens`) are tracked separately and appear as `cached_tokens` in traces. This lets you see the real savings from Anthropic's prompt caching.
+</Note>
+
+### Google Generative AI
+
+`wrapGoogle(client)` patches the `getGenerativeModel()` method and captures token counts from `response.usageMetadata`.
+
+```typescript
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { lumiqtrace } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+const google = lumiqtrace.wrapGoogle(new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!));
+
+const model = google.getGenerativeModel({ model: "gemini-2.5-flash" });
+const result = await model.generateContent("What is quantum entanglement?");
+```
+
+### OpenRouter
+
+`wrapOpenRouter(client)` wraps OpenRouter clients, which share the OpenAI SDK interface.
+
+```typescript
+import OpenAI from "openai";
+import { lumiqtrace } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+const openrouter = lumiqtrace.wrapOpenRouter(
+  new OpenAI({
+    baseURL: "https://openrouter.ai/api/v1",
+    apiKey: process.env.OPENROUTER_API_KEY!,
+  })
+);
+
+const response = await openrouter.chat.completions.create({
+  model: "anthropic/claude-sonnet-4-6",
+  messages: [{ role: "user", content: "Hello from OpenRouter!" }],
+});
+```
+
+## Context enrichment
+
+Use `withLumiqtraceContext` to attach a `userId`, `sessionId`, or custom `tags` to all traces generated within a function scope. This is useful for associating LLM calls with a specific user session or request.
+
+```typescript
+import { withLumiqtraceContext, lumiqtrace } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+const openai = lumiqtrace.wrapOpenAI(new OpenAI());
+
+// In a request handler:
+export async function POST(req: Request) {
+  const { userId, sessionId } = await getSession(req);
+
+  return withLumiqtraceContext(
+    {
+      userId,
+      sessionId,
+      tags: { feature: "chat", plan: "pro" },
+    },
+    async () => {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: await req.text() }],
+      });
+      return Response.json(response);
+    }
+  );
+}
+```
+
+`withLumiqTrace` is an alias for `withLumiqtraceContext` and behaves identically.
+
+<Tip>
+  Set `userId` and `sessionId` on every request that involves a logged-in user. This enables per-user cost breakdown and session replay in the LumiqTrace dashboard.
+</Tip>

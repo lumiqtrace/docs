@@ -1,0 +1,62 @@
+---
+title: "Dashboard overview — your LLM health at a glance"
+sidebarTitle: "Overview"
+description: "The overview page surfaces your four key LLM metrics, a cost and request timeline, your top models by spend, and recent errors — all in one place."
+---
+
+The overview page is the first thing you see after logging in. It gives you an immediate read on the health of your LLM operations: how many requests you've processed, what they cost, how fast they responded, and whether anything went wrong. All data on this page refreshes from a 5-minute cache, so what you see is never more than 5 minutes stale.
+
+## KPI cards
+
+The four cards at the top of the page are your primary indicators. Each card shows the current value for the selected time range alongside a trend arrow that compares the current period to the previous one.
+
+<CardGroup cols={2}>
+  <Card title="Total requests" icon="arrow-up-right">
+    The total number of LLM calls recorded in the selected time range. A rising trend means your application is handling more traffic.
+  </Card>
+  <Card title="Total cost" icon="dollar-sign">
+    The sum of all LLM spend in USD for the selected period. Cost is calculated from token counts multiplied by each model's per-token price.
+  </Card>
+  <Card title="Average latency" icon="timer">
+    The mean response time in milliseconds across all requests. Use this to spot slowdowns before users notice them.
+  </Card>
+  <Card title="Error rate" icon="circle-alert">
+    The percentage of requests that ended in an error, timeout, or rate limit. A trend arrow pointing up here warrants investigation.
+  </Card>
+</CardGroup>
+
+<Tip>
+  Click any KPI card to navigate directly to the page that shows deeper detail for that metric — for example, clicking the error rate card takes you to the Errors page.
+</Tip>
+
+## Requests and cost timeline
+
+Below the KPI cards, a dual-axis chart plots request volume and cost together over time. The time granularity switches automatically: hourly when you're viewing less than 48 hours, and daily for longer ranges. Use this chart to correlate cost spikes with traffic peaks, or to identify periods where cost rose faster than request volume — a sign that you may be using a more expensive model than necessary.
+
+## Top models by cost
+
+The top models table lists up to five models ranked by their total spend in the selected period. For each model you can see the number of calls, total cost, average cost per call, and cache hit rate. This table is the fastest way to answer the question "which model is driving my bill?"
+
+<Tip>
+  If one model dominates your spend, head to the [Costs page](/dashboard/costs) for a deeper breakdown and 30-day forecasting. The [AI Hub](/dashboard/ai-features) can also generate specific cost-reduction recommendations based on your usage patterns.
+</Tip>
+
+## Anomaly banner
+
+When LumiqTrace's anomaly detection identifies a statistical anomaly — a cost spike, a latency jump, or an unusual error rate — a yellow banner appears at the top of the overview page. The banner shows a plain-English headline and links directly to the Anomalies tab in the AI Hub for the full explanation, business impact assessment, and recommended action.
+
+<Note>
+  The anomaly banner only appears when an anomaly has been detected in the last 15 minutes. If the banner is not visible, no active anomalies were found in your recent data. Anomaly detection requires the Team plan or higher.
+</Note>
+
+## Recent errors
+
+The recent errors list at the bottom of the page shows the last 10 failed requests — any request with a status of `error`, `timeout`, or `rate_limited`. For each entry you can see the timestamp, model, error code, and latency. Click any row to open the full trace detail and see every span in that request.
+
+## Navigating to other sections
+
+The sidebar on the left gives you access to every section of the dashboard. The overview page links contextually to the most relevant deeper views: the timeline links to Costs, the error list links to Traces, and the anomaly banner links to AI Features. You can also use the breadcrumb at the top of each page to return to the overview at any time.
+
+<Note>
+  The overview page is available on all plans, including Free.
+</Note>

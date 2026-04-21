@@ -1,0 +1,236 @@
+---
+title: "Prompt management — versioned prompts with the SDK"
+sidebarTitle: "Prompt management"
+description: "Fetch, compile, create, and manage versioned prompts from the LumiqTrace prompt library using PromptClient, with built-in caching and variable substitution."
+---
+
+The LumiqTrace prompt library stores versioned prompts that your application fetches at runtime. This lets you update prompts without redeploying code, experiment with variants using labels, and track which prompt version produced which LLM output. The `PromptClient` is the SDK interface to this library.
+
+## Getting a `PromptClient`
+
+The `PromptClient` is available two ways: from the initialized `lumiqtrace` singleton, or by constructing it directly.
+
+```typescript
+import { lumiqtrace } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+// Via the singleton (recommended)
+const prompts = new lumiqtrace.PromptClient(lumiqtrace.getClient());
+
+// Or import and construct directly
+import { PromptClient, getLumiqtraceClient } from "@lumiqtrace/sdk";
+const prompts = new PromptClient(getLumiqtraceClient());
+```
+
+## Fetching a prompt
+
+`client.get(name, options?)` fetches a prompt by name. By default it returns the latest version. Results are cached locally for 5 minutes.
+
+```typescript
+// Latest version
+const prompt = await prompts.get("support-reply");
+
+// Specific version
+const prompt = await prompts.get("support-reply", { version: 3 });
+
+// By label — useful for staging/production separation
+const prompt = await prompts.get("support-reply", { label: "production" });
+
+// Skip the local cache and always fetch fresh
+const prompt = await prompts.get("support-reply", { cache: false });
+```
+
+<ParamField query="name" type="string" required>
+  The name of the prompt to fetch.
+</ParamField>
+
+<ParamField query="version" type="number">
+  Fetch a specific version number. Mutually exclusive with `label`.
+</ParamField>
+
+<ParamField query="label" type="string">
+  Fetch the version currently associated with this label (e.g. `"production"`, `"staging"`, `"canary"`). Mutually exclusive with `version`.
+</ParamField>
+
+<ParamField query="cache" type="boolean" default="true">
+  When `true`, the result is cached locally for 5 minutes. Set to `false` to bypass the cache for this call.
+</ParamField>
+
+## Compiling prompts with variables
+
+`client.compile(prompt, variables)` substitutes `{{variable}}` placeholders in a `text`-type prompt with the values you provide.
+
+```typescript
+const prompt = await prompts.get("support-reply", { label: "production" });
+
+const text = prompts.compile(prompt, {
+  customer_name: "Alex",
+  order_id: "ORD-7821",
+  product: "wireless headphones",
+});
+
+// Use the compiled text in an LLM call
+const response = await openai.chat.completions.create({
+  model: "gpt-4o",
+  messages: [
+    { role: "system", content: text },
+    { role: "user", content: userMessage },
+  ],
+});
+```
+
+For `chat`-type prompts, `compile` returns a JSON string of the messages array. Parse it before using:
+
+```typescript
+const messages = JSON.parse(prompts.compile(chatPrompt, variables));
+```
+
+## Listing prompts
+
+`client.list(nameFilter?)` returns all prompts in your project. Optionally filter by a name substring.
+
+```typescript
+// All prompts
+const allPrompts = await prompts.list();
+
+// Filter by name
+const supportPrompts = await prompts.list("support");
+```
+
+## Creating a new prompt version
+
+`client.create(params)` creates a new prompt version. Each call creates a new version number — existing versions are never modified.
+
+```typescript
+const newPrompt = await prompts.create({
+  name: "support-reply",
+  type: "text",
+  prompt: "You are a helpful support agent for {{company_name}}. " +
+          "Reply to the customer's message about their order {{order_id}} " +
+          "in a friendly, concise tone.",
+  config: {
+    model: "gpt-4o",
+    temperature: 0.3,
+    max_tokens: 500,
+  },
+  labels: ["staging"],
+  tags: ["support", "v2"],
+  commitMessage: "Add company name variable for white-label support",
+});
+
+console.log(`Created version ${newPrompt.version}`);
+```
+
+<ParamField body="name" type="string" required>
+  The prompt name. Must match the name of an existing prompt to add a version, or creates a new prompt if it does not exist.
+</ParamField>
+
+<ParamField body="type" type="string" required>
+  `"text"` for a plain string prompt with `{{variable}}` placeholders, or `"chat"` for an array of messages.
+</ParamField>
+
+<ParamField body="prompt" type="any" required>
+  The prompt content. A string for `text` type; an array of message objects for `chat` type.
+</ParamField>
+
+<ParamField body="config" type="object">
+  Suggested model configuration (model, temperature, max_tokens). Stored with the prompt for reference but not enforced by the SDK.
+</ParamField>
+
+<ParamField body="labels" type="string[]">
+  Labels to apply to this version immediately on creation (e.g. `["staging"]`).
+</ParamField>
+
+<ParamField body="tags" type="string[]">
+  Searchable tags for organizing prompts in the dashboard.
+</ParamField>
+
+<ParamField body="commitMessage" type="string">
+  Human-readable description of what changed in this version. Appears in the version history view.
+</ParamField>
+
+## Updating labels
+
+`client.updateLabels(name, version, labels)` replaces all labels on a specific version. Use this to promote a version from staging to production.
+
+```typescript
+// Promote version 4 to production
+await prompts.updateLabels("support-reply", 4, ["production"]);
+
+// Move staging label to a newer version
+await prompts.updateLabels("support-reply", 5, ["staging"]);
+```
+
+<Note>
+  Labels are not exclusive by default. The same label (e.g. `"production"`) can exist on multiple versions simultaneously. If you want a single canonical production version, update the old version's labels to remove `"production"` before applying it to the new version.
+</Note>
+
+## Clearing the cache
+
+The local cache has a 5-minute TTL. Call `client.clearCache()` to invalidate it manually — useful after creating a new version or updating labels in the same process.
+
+```typescript
+// Clear cache for a specific prompt
+prompts.clearCache("support-reply");
+
+// Clear all cached prompts
+prompts.clearCache();
+```
+
+## Complete workflow
+
+This example shows the full lifecycle: create a prompt, promote it to production, fetch it by label, compile it with variables, and use it in an LLM call.
+
+```typescript
+import { lumiqtrace, PromptClient } from "@lumiqtrace/sdk";
+import OpenAI from "openai";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+const openai = lumiqtrace.wrapOpenAI(new OpenAI());
+const promptClient = new PromptClient(lumiqtrace.getClient());
+
+// 1. Create a new prompt version and put it in staging
+const version = await promptClient.create({
+  name: "support-reply",
+  type: "text",
+  prompt:
+    "You are a support agent for {{company_name}}. " +
+    "Help the customer with their question about order {{order_id}}. " +
+    "Be concise and friendly.",
+  labels: ["staging"],
+  commitMessage: "Initial support reply template",
+});
+
+// 2. After testing, promote to production
+await promptClient.updateLabels("support-reply", version.version, ["production"]);
+promptClient.clearCache("support-reply");
+
+// 3. At request time: fetch by label, compile, and call the LLM
+async function handleSupportRequest(
+  customerId: string,
+  orderId: string,
+  userMessage: string
+): Promise<string> {
+  const prompt = await promptClient.get("support-reply", { label: "production" });
+
+  const systemPrompt = promptClient.compile(prompt, {
+    company_name: "Acme Corp",
+    order_id: orderId,
+  });
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
+    ],
+  });
+
+  return response.choices[0].message.content ?? "";
+}
+```
+
+<Tip>
+  The 5-minute cache TTL means your application automatically picks up prompt updates without restarting. For immediate rollouts, call `promptClient.clearCache("prompt-name")` in your deployment pipeline after updating labels.
+</Tip>

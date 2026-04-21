@@ -1,0 +1,89 @@
+---
+title: "Costs — understand and control your LLM spend"
+sidebarTitle: "Costs"
+description: "Break down your LLM spend by model and over time, track cache savings, see your month-to-date total, and get a 30-day forecast to avoid billing surprises."
+---
+
+The Costs page gives you a complete picture of where your LLM budget is going. You can see which models are the most expensive, how your daily spend is trending, how much you're saving through token caching, and where your current month is heading. Use this data to make informed decisions about model selection and sampling strategies before your next billing cycle arrives.
+
+<Warning>
+  The Costs page requires the Pro plan or higher. If you're on the Free plan, you'll see a prompt to upgrade when you navigate to this section.
+</Warning>
+
+## Cost by model
+
+The bar chart at the top of the page ranks every model you've used in the selected period by total spend. Each bar shows the model name and its USD cost for the period. Hover over a bar to see the underlying numbers: number of calls, total tokens, average cost per call, and cache hit rate.
+
+This chart answers the most common cost question immediately: "which model is responsible for most of my bill?" If one model towers above the others, that's your highest-leverage target for optimization.
+
+## Cost over time
+
+The line chart below shows your daily spend across the selected date range. Each point represents total cost for that calendar day across all models. Use this chart to spot:
+
+- Sudden spikes that coincide with a deployment or feature launch
+- Gradual cost growth that may indicate increasing usage or a model change
+- Days with unexpectedly low cost that may point to an outage or misconfiguration
+
+You can change the date range using the selector above the chart. Shorter ranges (7 days) show finer detail; longer ranges (90 days) reveal trends.
+
+## Cache hit ratio
+
+The cache hit ratio card shows what percentage of your input tokens were served from the model provider's prompt cache rather than recomputed from scratch. A higher cache hit ratio means lower cost and lower latency for those requests.
+
+The card displays:
+
+- **Cache hit ratio** — percentage of total input tokens that were cached
+- **Cached tokens** — the raw count of tokens served from cache
+- **Estimated savings** — the USD amount saved by not recomputing those tokens
+
+<Tip>
+  To increase your cache hit ratio, structure your prompts so that the static system prompt comes first and only the dynamic user content changes per request. The LumiqTrace SDK tracks `cached_tokens` automatically when your provider reports them.
+</Tip>
+
+## Month-to-date spend
+
+The gauge in the upper-right corner shows your cumulative spend for the current calendar month. The gauge fills from zero toward the outer ring, which represents your budgeted monthly limit (if you've set one). The exact dollar amount is shown in the center.
+
+## 30-day forecast
+
+Below the gauge, a forecast card projects your total spend for the next 30 days based on a linear extrapolation of your recent daily averages. This is a straight-line estimate — it does not account for planned changes in traffic — but it gives you an early warning if your current trajectory will exceed your budget.
+
+<Note>
+  The forecast uses the last 14 days of data to calculate the daily average. If your usage pattern is highly variable or you recently made a significant change (such as switching models), treat the forecast as a directional signal rather than a precise prediction.
+</Note>
+
+## Cost by user
+
+<Warning>
+  The cost by user table requires the Team plan or higher.
+</Warning>
+
+If your SDK passes a `userId` when creating spans, the cost by user table breaks down spend per user for the selected period. The table shows each user ID, their total cost, number of requests, and average cost per request, sorted by total spend descending.
+
+This view is useful for understanding which users or user segments are the most expensive to serve, and for detecting unusual individual usage that may indicate a bug or abuse.
+
+<Note>
+  The cost by user table only populates for requests where your SDK explicitly sets a user ID. If you haven't configured this, see the SDK documentation for how to attach user context to your traces.
+</Note>
+
+## Acting on cost data
+
+The Costs page is most useful when it informs action. Here are two common levers:
+
+<AccordionGroup>
+  <Accordion title="Adjust your SDK sample rate">
+    If your costs are higher than expected and your application can tolerate missing some traces, reduce the `sampleRate` in your SDK configuration. A `sampleRate` of `0.5` sends half of all events to LumiqTrace, cutting your event quota usage and any associated overage charges in half. Set it in your SDK initialization:
+
+    ```typescript
+    import { lumiqtrace } from "@lumiqtrace/sdk";
+
+    lumiqtrace.init({
+      apiKey: process.env.LUMIQTRACE_API_KEY,
+      sampleRate: 0.5, // trace 50% of requests
+    });
+    ```
+  </Accordion>
+  <Accordion title="Switch to a less expensive model">
+    If the cost by model chart shows that one expensive model handles a large share of your requests, consider whether a smaller model could handle some of those workloads. The [AI Hub Cost Optimizer](/dashboard/ai-features) can analyze your 30-day spend patterns and generate specific switching recommendations — including confidence scores and code examples — tailored to your actual usage.
+  </Accordion>
+</AccordionGroup>

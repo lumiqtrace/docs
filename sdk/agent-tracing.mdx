@@ -1,0 +1,163 @@
+---
+title: "Agent tracing — withAgent and multi-agent systems"
+sidebarTitle: "Agent tracing"
+description: "Use withAgent to trace multi-agent workflows, capture planning steps, tool calls, and agent-to-agent handoffs as linked spans in the LumiqTrace dashboard."
+---
+
+LumiqTrace provides a first-class API for tracing multi-agent systems. The `withAgent` function creates an agent span and gives you an `AgentContext` object to log planning steps, instrument tool calls, and record handoffs to other agents. All LLM calls made inside the `withAgent` block automatically inherit the agent's trace context — no additional wiring is required.
+
+## The `withAgent` function
+
+`withAgent(options, fn)` starts an agent trace, runs your workflow function with an `AgentContext`, and automatically links any nested LLM calls to the same trace.
+
+```typescript
+import { lumiqtrace, withAgent } from "@lumiqtrace/sdk";
+import OpenAI from "openai";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+const openai = lumiqtrace.wrapOpenAI(new OpenAI());
+
+await withAgent(
+  {
+    name: "CustomerSupportAgent",
+    role: "coordinator",
+    tools: [
+      { name: "lookup_order", description: "Fetch order details by ID" },
+      { name: "check_policy", description: "Check refund eligibility" },
+    ],
+  },
+  async (agent) => {
+    // Log the steps the agent intends to take
+    agent.logPlan(["Lookup order", "Check policy", "Draft response"]);
+
+    // Trace a tool call — args and result are captured
+    const order = await agent.traceTool(
+      "lookup_order",
+      { id: "123" },
+      () => fetchOrder("123")
+    );
+
+    // Make an LLM call — it automatically links to this agent span
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: "You are a support agent." },
+        { role: "user", content: `Order details: ${JSON.stringify(order)}` },
+      ],
+    });
+
+    // Record a handoff to a specialist agent
+    agent.delegateTo("RefundPolicyAgent", "refund requested");
+  }
+);
+```
+
+## `AgentOptions`
+
+<ParamField body="name" type="string" required>
+  Display name for this agent. Appears in the trace view and the agent registry.
+</ParamField>
+
+<ParamField body="role" type="string" default="specialist">
+  Role label for this agent. Common values: `"coordinator"`, `"specialist"`, `"planner"`. Used to distinguish orchestrators from workers in multi-agent traces.
+</ParamField>
+
+<ParamField body="framework" type="string" default="custom">
+  Framework powering this agent. Examples: `"custom"`, `"langchain"`, `"google-adk"`, `"openai-assistants"`.
+</ParamField>
+
+<ParamField body="tools" type="ToolDefinition[]">
+  Tool definitions available to this agent. Each object should have a `name` and a `description`. These appear in the tool discovery view and are linked to tool call spans.
+</ParamField>
+
+<ParamField body="metadata" type="Record<string, unknown>">
+  Arbitrary key-value metadata attached to the agent span. Use this for model parameters, configuration versions, or any context you want to query later.
+</ParamField>
+
+## `AgentContext` methods
+
+The `agent` object passed to your function exposes three methods:
+
+### `agent.logPlan(steps)`
+
+Records a `planning` span with the list of steps the agent intends to take. Call this after deciding what to do and before executing.
+
+```typescript
+agent.logPlan([
+  "Retrieve customer history",
+  "Identify issue category",
+  "Draft resolution",
+]);
+```
+
+### `agent.traceTool(name, args, fn)`
+
+Wraps an async or sync function call and records a `tool` span containing the tool name, input arguments, and return value.
+
+```typescript
+const result = await agent.traceTool(
+  "lookup_order",
+  { id: "123" },
+  () => fetchOrder("123")
+);
+```
+
+If the wrapped function throws, the tool span is recorded with `status: "error"` and the error is re-thrown.
+
+### `agent.delegateTo(targetName, reason?)`
+
+Records a `handoff` span indicating that this agent is delegating work to another agent. The `reason` string is stored as `delegation_reason` on the span.
+
+```typescript
+agent.delegateTo("RefundPolicyAgent", "customer requested refund");
+```
+
+## Span kinds emitted
+
+`withAgent` and its methods produce four distinct span kinds, each visible as a separate row in the trace flame graph:
+
+| Span kind  | Emitted by              | What it represents                        |
+|------------|-------------------------|-------------------------------------------|
+| `agent`    | `withAgent` entry       | The agent's overall execution scope       |
+| `planning` | `agent.logPlan()`       | The planned steps before execution        |
+| `tool`     | `agent.traceTool()`     | A single tool invocation                  |
+| `handoff`  | `agent.delegateTo()`    | A delegation to another agent             |
+
+## Nested agents
+
+Agents can be nested inside each other. The outer `withAgent` sets a trace context that is automatically inherited by the inner `withAgent`. The inner agent span records the outer agent's ID as `parent_agent_id`, building a parent-child hierarchy visible in the agent registry.
+
+```typescript
+await withAgent({ name: "CoordinatorAgent", role: "coordinator" }, async (coordinator) => {
+  coordinator.logPlan(["Classify request", "Delegate to specialist"]);
+
+  // The nested withAgent automatically links to the coordinator's trace
+  await withAgent({ name: "RefundSpecialist", role: "specialist" }, async (specialist) => {
+    specialist.logPlan(["Check eligibility", "Process refund"]);
+
+    const eligible = await specialist.traceTool(
+      "check_eligibility",
+      { orderId: "123" },
+      () => checkRefundEligibility("123")
+    );
+
+    if (eligible) {
+      await specialist.traceTool(
+        "process_refund",
+        { orderId: "123", amount: 49.99 },
+        () => processRefund("123", 49.99)
+      );
+    }
+  });
+
+  coordinator.delegateTo("RefundSpecialist", "refund request classified");
+});
+```
+
+<Tip>
+  Set `role: "coordinator"` on the top-level agent and `role: "specialist"` on sub-agents. This powers the coordinator-specialist breakdown in the agent analytics view.
+</Tip>
+
+<Warning>
+  Always `await` `withAgent` when it wraps async work. If you do not await it, the agent span may close before inner tool or LLM spans complete, resulting in broken parent-child links in the trace.
+</Warning>

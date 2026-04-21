@@ -1,0 +1,87 @@
+---
+title: 'API keys: authenticate your SDK integrations'
+description: 'Understand how LumiqTrace API keys work, how to create and rotate them safely, and best practices for keeping your keys secure in production.'
+sidebarTitle: 'API Keys'
+---
+
+API keys authenticate ingest calls made by the LumiqTrace SDK. They are not used to log in to the dashboard — they exist solely to authorize your application when it sends trace data to LumiqTrace. Each key is scoped to a single project, so data from different projects stays isolated, and you can rotate or revoke keys for one project without affecting others.
+
+## Key format
+
+Every LumiqTrace API key begins with the prefix `lqt_` followed by 64 hexadecimal characters:
+
+```
+lqt_a3f9c2e1b4d07f85a3f9c2e1b4d07f85a3f9c2e1b4d07f85a3f9c2e1b4d07f85
+```
+
+The prefix makes it easy to identify LumiqTrace keys in code reviews and secret scanners.
+
+## Finding your API keys
+
+Go to **Settings > API Keys** within your organization. You'll see a list of all keys for each project — including the key name, the project it belongs to, the key prefix (`lqt_` + first 8 characters), and the date it was created. The full key value is never shown again after initial creation.
+
+## Creating an API key
+
+<Warning>
+  Your API key is shown **only once**, immediately after creation. Copy it to a secure location before closing the dialog — LumiqTrace stores only a hashed version and cannot display the full key again.
+</Warning>
+
+<Steps>
+  <Step title="Open API Keys settings">
+    Navigate to **Settings > API Keys** in your organization.
+  </Step>
+  <Step title="Select a project">
+    Choose which project this key will send data to. Keys are project-scoped — a key created for one project cannot ingest data into another.
+  </Step>
+  <Step title="Name the key">
+    Give the key a descriptive name, such as `production-web` or `staging-backend`. This name helps you identify the key's purpose later.
+  </Step>
+  <Step title="Copy the key">
+    Click **Create key**. The full key value is displayed once in a dialog. Copy it now and store it in your secrets manager or environment variables before closing.
+  </Step>
+</Steps>
+
+## Rotating a key
+
+Key rotation replaces an existing key with a new one while keeping your services online. LumiqTrace provides a **24-hour grace period** during which both the old key and the new key are accepted — giving you time to deploy the new key to your infrastructure before the old one stops working.
+
+<Steps>
+  <Step title="Click Rotate next to the key">
+    In **Settings > API Keys**, find the key you want to rotate and click **Rotate**.
+  </Step>
+  <Step title="Copy the new key">
+    A new key is generated and shown once. Copy it immediately.
+  </Step>
+  <Step title="Deploy the new key">
+    Update your environment variables or secrets manager with the new key value and redeploy your services.
+  </Step>
+  <Step title="Old key expires">
+    After 24 hours, the old key is automatically invalidated. Any SDK still using the old key will begin receiving `401 Unauthorized` responses.
+  </Step>
+</Steps>
+
+<Tip>
+  Deploy and verify your services are using the new key before the 24-hour window closes. You can check the key prefix shown in the dashboard to confirm which key a service is using.
+</Tip>
+
+## Revoking a key
+
+Revoking a key invalidates it **immediately** — there is no grace period. Any SDK or service still using the revoked key will receive `401 Unauthorized` errors right away and stop sending data to LumiqTrace.
+
+To revoke a key, click **Revoke** next to it in **Settings > API Keys** and confirm the action. Use revocation when you suspect a key has been compromised and need to stop it instantly.
+
+## Multiple projects, multiple keys
+
+Because API keys are project-scoped, each project in your organization has its own key. If you have a web app, a mobile backend, and a data pipeline all sending traces to LumiqTrace, each should use a separate key pointed at its own project. This keeps data partitioned and lets you rotate or revoke one service's key without affecting the others.
+
+## Security best practices
+
+- **Never commit API keys to source control.** Even in private repositories, treat keys as secrets.
+- **Use environment variables.** Set `LUMIQTRACE_API_KEY` in your deployment environment and read it from there — never hardcode the value in your application.
+- **Rotate keys regularly.** For production workloads, rotate keys on a schedule (for example, every 90 days) as part of your security posture.
+- **Rotate immediately if compromised.** If a key is leaked or you suspect unauthorized access, use **Rotate** (for a graceful 24-hour transition) or **Revoke** (for immediate invalidation), then update your services.
+- **Use one key per environment.** Keep separate keys for development, staging, and production so a leak in one environment doesn't affect others.
+
+<Note>
+  LumiqTrace never stores the plaintext key after creation. Only a secure hash is retained for verification. If you lose a key, you must rotate it to generate a new one.
+</Note>

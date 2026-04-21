@@ -1,0 +1,118 @@
+---
+title: "LumiqTrace: LLM Observability for AI Builders"
+description: "LumiqTrace is an LLM observability platform for AI applications. Instrument in two lines, then monitor traces, costs, errors, and anomalies in one dashboard."
+---
+
+LumiqTrace is an LLM observability platform built for developers shipping AI applications. Every time your code calls an LLM — whether it's a single chat completion or a complex multi-step agent workflow — LumiqTrace captures the full picture: latency, token usage, cost, errors, and more. The tagline says it simply: illuminate every LLM call.
+
+## What you can do with LumiqTrace
+
+<CardGroup cols={2}>
+  <Card title="Distributed tracing" icon="git-branch">
+    Follow a user request across every LLM call it touches. The flame graph view shows each span's latency, cost, and status so you can pinpoint exactly where time and money are spent.
+  </Card>
+  <Card title="Cost tracking" icon="dollar-sign">
+    See your LLM spend broken down by model, user, environment, and time period. Cached token discounts are computed automatically using per-model pricing.
+  </Card>
+  <Card title="Performance monitoring" icon="gauge">
+    Track P50, P90, and P99 latency alongside time-to-first-token (TTFT) for streaming calls. Spot slow models and regressions before your users do.
+  </Card>
+  <Card title="Anomaly detection" icon="triangle-alert">
+    A background job scans your metrics every 15 minutes and surfaces statistically significant deviations — cost spikes, latency jumps, error surges — with plain-English explanations.
+  </Card>
+  <Card title="AI-powered insights" icon="sparkles">
+    The Cost Optimizer analyses your 30-day spend and returns ranked, actionable recommendations with estimated monthly savings. Ask your data questions in natural language with NL Query.
+  </Card>
+  <Card title="Root cause analysis" icon="search">
+    For any failed or slow trace, request an AI-generated root cause report that explains what went wrong and how to prevent it.
+  </Card>
+</CardGroup>
+
+## Who LumiqTrace is for
+
+LumiqTrace is designed for developers and engineering teams who are building products on top of LLMs. If you're calling OpenAI, Anthropic, or Google from your backend — or orchestrating multi-step agents — you need visibility into what's happening at runtime. LumiqTrace gives you that without requiring you to instrument every call by hand. A two-line SDK setup is all it takes.
+
+## Pricing tiers
+
+LumiqTrace charges per organization. You can start on the Free tier with no credit card required, then upgrade as your usage grows.
+
+<Tabs>
+  <Tab title="Free">
+    The Free tier is designed for individual developers exploring LumiqTrace or building early prototypes.
+
+    | | |
+    |---|---|
+    | **Events per month** | 10,000 |
+    | **Data retention** | 7 days |
+    | **Projects** | 1 |
+    | **Team members** | 1 (owner only) |
+    | **Tracing & requests log** | Included |
+    | **Cost Optimizer** | Not included |
+    | **Anomaly Detection** | Not included |
+    | **Alerts** | Not included |
+
+    <Note>
+      The Free tier is capped at 10K events per month with no overage option. Upgrade to Pro when you need more headroom.
+    </Note>
+  </Tab>
+  <Tab title="Pro — $29/mo">
+    Pro is for solo developers and small teams running LLM features in production.
+
+    | | |
+    |---|---|
+    | **Events per month** | 100,000 |
+    | **Data retention** | 30 days |
+    | **Projects** | 3 |
+    | **Team members** | 1 |
+    | **Cost Optimizer** | Weekly reports |
+    | **Root Cause Analysis** | 10 traces/mo |
+    | **Alerts** | Up to 5 rules |
+    | **Overage** | $0.50 per 10K events |
+
+  </Tab>
+  <Tab title="Team — $99/mo">
+    Team adds collaboration, AI features, and the capacity for larger applications.
+
+    | | |
+    |---|---|
+    | **Events per month** | 1,000,000 |
+    | **Data retention** | 90 days |
+    | **Projects** | Unlimited |
+    | **Team members** | Up to 10 |
+    | **Cost Optimizer** | Daily reports |
+    | **Anomaly Detection** | Included |
+    | **NL Query** | 50 queries/mo |
+    | **Root Cause Analysis** | 50 traces/mo |
+    | **Alerts** | Unlimited rules |
+    | **Data export** | CSV |
+    | **Overage** | $0.50 per 10K events |
+
+  </Tab>
+  <Tab title="Scale — $299/mo">
+    Scale is for organizations with high event volumes, large teams, and advanced security requirements.
+
+    | | |
+    |---|---|
+    | **Events per month** | 10,000,000 |
+    | **Data retention** | 1 year |
+    | **Projects** | Unlimited |
+    | **Team members** | Unlimited |
+    | **Cost Optimizer** | Real-time |
+    | **Anomaly Detection** | Included |
+    | **NL Query** | Unlimited |
+    | **Root Cause Analysis** | Unlimited |
+    | **Alerts** | Unlimited + webhooks |
+    | **Data export** | CSV + API |
+    | **SSO / SAML** | Coming soon |
+    | **Overage** | $0.30 per 10K events |
+
+  </Tab>
+</Tabs>
+
+## Ready to start?
+
+Get your first trace into the dashboard in under five minutes.
+
+<Card title="Quickstart" icon="rocket" href="/quickstart">
+  Install the SDK, wrap your OpenAI client, and see your first trace appear in the dashboard.
+</Card>

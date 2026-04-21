@@ -1,0 +1,107 @@
+---
+title: "Traces — inspect every LLM request and its spans"
+sidebarTitle: "Traces"
+description: "Browse your full request log, filter by model or status, and drill into a flame graph showing every span in a trace with token, cost, and latency details."
+---
+
+The Traces section gives you two complementary views of your LLM traffic: a paginated log of every request your application has made, and a flame graph that lets you inspect the internal structure of any individual trace. Together they let you move from a high-level question like "why did my costs spike this afternoon?" down to the exact LLM call that caused it.
+
+## Requests log
+
+The requests log is a table of all LLM events recorded for your project. Each row represents a single LLM call and shows:
+
+| Column | What it shows |
+|--------|--------------|
+| Timestamp | When the request was made, displayed in your local timezone |
+| Model | The model identifier (e.g., `gpt-4o`, `claude-sonnet-4-6`) |
+| Status | The outcome: `success`, `error`, `timeout`, or `rate_limited` |
+| Latency | Total time from request to final token, in milliseconds |
+| Cost | USD cost calculated from token counts and model pricing |
+| Tokens | Input and output token counts |
+
+### Filtering requests
+
+The filter bar above the table lets you narrow down the list:
+
+- **Model** — select one or more models from the dropdown
+- **Status** — filter to `success`, `error`, `timeout`, or `rate_limited` requests
+- **Date range** — pick a start and end date, or choose a preset like "last 24 hours"
+- **Environment** — filter by the `environment` tag your SDK sends (e.g., `production`, `staging`)
+- **User ID** — enter a user ID to see all requests associated with a specific user
+
+You can combine filters freely. The table updates immediately when you change any filter.
+
+### Pagination
+
+The table uses cursor-based pagination and returns up to 200 events per page. Use the **Next** and **Previous** buttons to move between pages. Cursor pagination ensures consistent results even if new events arrive while you are browsing.
+
+### Opening a trace
+
+Click any row in the table to open the trace detail view for that request. If the request is part of a multi-span trace, you will see all spans rendered in a flame graph.
+
+---
+
+## Trace flame graph
+
+The trace detail view displays a custom flame graph that shows every span in a trace arranged on a shared timeline. This is the best way to understand where time was spent and which specific LLM calls contributed to cost or errors.
+
+### Reading the flame graph
+
+- **X-axis** represents wall-clock time from the start of the trace to the end
+- **Each bar** represents a single LLM call (span). The bar's width is proportional to how long that call took
+- **Rows** represent depth in the call tree — child spans appear below their parent
+
+### Color coding
+
+Each bar is color-coded by its outcome:
+
+<CardGroup cols={2}>
+  <Card title="Green — success" icon="circle-check">
+    The span completed successfully.
+  </Card>
+  <Card title="Red — error" icon="circle-x">
+    The span ended in an error.
+  </Card>
+  <Card title="Yellow — timeout" icon="clock">
+    The span timed out before receiving a response.
+  </Card>
+  <Card title="Gray — cancelled" icon="ban">
+    The span was cancelled before completing.
+  </Card>
+</CardGroup>
+
+### Zooming
+
+Scroll with your mouse wheel over the flame graph to zoom in and out. Zooming in expands the time axis so you can distinguish spans that are close together. Zoom all the way out to see the full trace duration at a glance.
+
+### Span detail panel
+
+Click any bar in the flame graph to open the span detail panel on the right. The panel shows:
+
+- **Model** — the exact model used for this span
+- **Tokens** — input tokens, output tokens, and cached tokens
+- **Cost** — USD cost for this span alone
+- **Latency** — duration of this span in milliseconds
+- **Tags** — any custom tags your SDK attached to this span
+- **Finish reason** — why the model stopped: `stop`, `length`, `tool_calls`, `content_filter`, or `error`
+
+### Explain with AI
+
+<Warning>
+  The **Explain with AI** button requires the Pro plan or higher. On the Free plan, the button is visible but disabled.
+</Warning>
+
+When you click **Explain with AI** in the span detail panel, LumiqTrace runs a root cause analysis on the full trace using an AI model with extended reasoning. It examines all spans — their timing, errors, token counts, and relationships — and returns:
+
+- A plain-English summary of what happened in the trace
+- The identified root cause type (e.g., token limit exceeded, upstream timeout)
+- The specific problem span
+- Contributing factors across the trace
+- Step-by-step fix recommendations, each with a priority and implementation note
+- A prevention tip to avoid recurrence
+
+Analysis takes between 5 and 30 seconds because it runs asynchronously. Once complete, the results are cached for 48 hours — reopening the same trace will show the cached analysis instantly.
+
+<Tip>
+  If a trace has no errors but latency is unexpectedly high, Explain with AI can still help. It identifies slow spans and suggests optimizations even when every span returned a successful status.
+</Tip>

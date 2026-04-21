@@ -1,0 +1,163 @@
+---
+title: "Core concepts: LumiqTrace data model explained"
+description: "Learn the LumiqTrace data model: events, spans, traces, projects, and organizations — and how cost is calculated from token counts."
+---
+
+Before diving into the dashboard, it helps to understand how LumiqTrace structures the data it collects. Everything starts with a single LLM API call and builds upward through a clear hierarchy. This page explains each concept from the bottom up.
+
+## The data hierarchy
+
+```
+Organization
+  └── Project  (one API key per project)
+        └── Trace  (trace_id groups related spans)
+              └── Span  (one LLM API call)
+```
+
+Every piece of data in LumiqTrace belongs to a project, and every project belongs to an organization. Within a project, individual LLM calls are captured as spans, and related spans are grouped into traces.
+
+---
+
+## Event
+
+An event is the most fundamental unit of data in LumiqTrace. Every time your instrumented code calls an LLM API, the SDK captures a single event and sends it to the ingest endpoint. Events are immutable once stored.
+
+<CardGroup cols={2}>
+  <Card title="Identity fields" icon="fingerprint">
+    `event_id` — unique UUIDv4 for this event
+
+    `trace_id` — links this event to others in the same trace
+
+    `span_id` — unique ID for this specific LLM call
+
+    `parent_span_id` — set when this call is nested inside another span
+  </Card>
+  <Card title="LLM fields" icon="cpu">
+    `provider` — `"openai"`, `"anthropic"`, `"google"`, or `"custom"`
+
+    `model` — the exact model string, e.g. `"gpt-4o-2024-08-06"`
+
+    `operation` — `"chat"`, `"embed"`, `"image"`, `"tts"`, or `"custom"`
+
+    `finish_reason` — `"stop"`, `"length"`, `"tool_calls"`, `"content_filter"`
+  </Card>
+  <Card title="Performance fields" icon="gauge">
+    `latency_ms` — total time from request to response
+
+    `ttft_ms` — time to first token (streaming calls only)
+
+    `input_tokens` — tokens in the prompt
+
+    `output_tokens` — tokens in the completion
+
+    `cached_tokens` — prompt tokens served from the provider's cache
+  </Card>
+  <Card title="Cost and status" icon="dollar-sign">
+    `cost_usd` — computed client-side by the SDK from per-model token pricing
+
+    `status` — `"success"`, `"error"`, `"timeout"`, `"rate_limited"`, or `"cancelled"`
+
+    `error_code` — provider error code when status is not `"success"`
+
+    `error_message` — up to 500 characters, sanitized before storage
+  </Card>
+</CardGroup>
+
+Events also carry context fields you can use for filtering: `environment`, `user_id`, `session_id`, and a `tags` map of arbitrary string key-value pairs.
+
+<Note>
+  Prompt text is **not** stored by default. The SDK always computes a SHA-256 hash of the prompt (`prompt_hash`) for deduplication purposes, but the raw text is only sent if you explicitly set `storePrompts: true` when calling `lumiqtrace.init()`.
+</Note>
+
+---
+
+## Span
+
+A span is an event that carries trace context. Every event is technically a span — the term is used to emphasize that the event participates in a parent-child relationship with other events in the same request flow.
+
+The two fields that make a span part of a trace are:
+
+- **`span_id`** — a unique identifier for this specific LLM call within the trace
+- **`parent_span_id`** — the `span_id` of the call that triggered this one (for nested agent workflows)
+
+When you look at a trace in the dashboard, the flame graph view renders the span tree visually: each bar represents one span, its width shows its duration relative to the total trace time, and indentation shows nesting depth.
+
+<Tip>
+  If you're building a pipeline where one LLM call triggers another — for example, a routing agent that delegates to a specialist — the SDK automatically propagates trace context using `AsyncLocalStorage` (Node.js) or `ContextVar` (Python), so the spans are linked without any manual effort on your part.
+</Tip>
+
+---
+
+## Trace
+
+A trace is a group of spans that all share the same `trace_id`. It represents the complete end-to-end flow of a single user request through your application — from the first LLM call to the last.
+
+For a simple chatbot that makes one API call per user message, a trace contains exactly one span. For an agentic workflow that routes, retrieves context, and generates a response across multiple calls, a trace may contain dozens of nested spans.
+
+In the dashboard, the **Traces** view shows the flame graph for a full trace:
+
+- The x-axis is time (start to finish of the root span)
+- Each bar is a span, coloured by status (green for success, red for error, yellow for slow)
+- Hovering shows span details; clicking opens the full span detail panel
+- The total trace cost is the sum of `cost_usd` across all spans
+
+<Note>
+  A trace is not a first-class object you create explicitly. It emerges automatically from the spans that share a `trace_id`. The SDK generates a new `trace_id` for each top-level call and propagates it to all nested calls through context propagation.
+</Note>
+
+---
+
+## Project
+
+A project is an isolated container for LLM events. Every project has exactly one API key, and all events ingested with that key are scoped to that project. Projects are the primary unit of data isolation in LumiqTrace.
+
+Use projects to separate:
+
+- **Applications** — one project per product or service
+- **Environments** — or use the `environment` field on events to keep production and staging data in the same project with easy filtering
+
+Each project has its own retention period (set by your plan) and its own set of dashboard metrics, alert rules, and AI analysis results.
+
+<Warning>
+  Your project API key should be kept secret and treated like a password. Do not commit it to source control. Use environment variables to inject it at runtime. If a key is compromised, rotate it from **Settings → API Keys** — the old key remains valid for 24 hours to allow a smooth rollover.
+</Warning>
+
+---
+
+## Organization
+
+An organization is the top-level workspace in LumiqTrace. It contains your projects, your team members, and your billing subscription. Every user belongs to at least one organization.
+
+Within an organization, members have one of three roles:
+
+| Role | Access |
+|---|---|
+| **Owner** | Full access including billing, org deletion, and all admin actions |
+| **Admin** | Manage projects, API keys, alerts, and AI features; read billing |
+| **Member** | Read-only access to the dashboard |
+
+<Note>
+  Billing is per organization, not per project or per user. Your plan's event quota is shared across all projects in the organization and resets monthly.
+</Note>
+
+---
+
+## Cost calculation
+
+LumiqTrace computes the `cost_usd` field client-side in the SDK before events are sent to the ingest API. This means costs appear immediately in the dashboard without any server-side enrichment step.
+
+The calculation uses a built-in pricing table that covers all major models:
+
+```
+cost_usd = (input_tokens × input_price
+          + output_tokens × output_price
+          + cached_tokens × cached_price) ÷ 1,000,000
+```
+
+Cached tokens — prompt tokens served from the provider's prompt cache — are billed at a reduced rate. The SDK extracts the cached token count from the provider's response automatically (`prompt_tokens_details.cached_tokens` for OpenAI, `cache_read_input_tokens` for Anthropic, `cachedContentTokenCount` for Google).
+
+If the SDK encounters a model it does not recognise, `cost_usd` is set to `0` rather than throwing an error or blocking the call.
+
+<Tip>
+  You can see your cached token rate and the dollar savings from caching on the **Costs** page under the Cache Hit Ratio card. Increasing your cache hit rate is often the easiest way to reduce LLM spend without changing your application logic.
+</Tip>

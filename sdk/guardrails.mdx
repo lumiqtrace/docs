@@ -1,0 +1,145 @@
+---
+title: "Guardrails — content checking for LLM calls"
+sidebarTitle: "Guardrails"
+description: "Enable pre- and post-LLM content checks on any wrapped client to block, redact, or flag unsafe inputs and outputs using your configured guardrail policies."
+---
+
+Guardrails let you run content safety checks before sending a prompt to an LLM (pre-check) and before returning the completion to your application (post-check). Each check is evaluated against the guardrail policies you configure in the LumiqTrace dashboard, and the SDK either allows the call to proceed, applies redaction, or throws a `GuardrailBlockedError`.
+
+## Enabling guardrails
+
+Pass `guardrails: true` to any wrapper function to enable both pre- and post-LLM checks with default settings.
+
+```typescript
+import OpenAI from "openai";
+import { lumiqtrace } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+const openai = lumiqtrace.wrapOpenAI(new OpenAI(), {
+  guardrails: true,
+});
+```
+
+When `guardrails: true` is set, all calls through this client run a pre-check on the prompt and a post-check on the completion. If any guardrail blocks the content, a `GuardrailBlockedError` is thrown before the LLM call is made (pre) or before the result is returned (post).
+
+## Fine-grained configuration
+
+Pass a configuration object instead of `true` to control exactly which phases run and how errors in the guardrail service are handled.
+
+```typescript
+const openai = lumiqtrace.wrapOpenAI(new OpenAI(), {
+  guardrails: {
+    pre: true,          // Check prompt before sending to LLM
+    post: true,         // Check completion before returning to app
+    failClosed: false,  // If guardrail service errors, allow the call through
+  },
+});
+```
+
+<ParamField body="pre" type="boolean" default="true">
+  When `true`, runs a content check on the prompt before the LLM call is made. A block at this phase prevents the LLM from ever receiving the prompt.
+</ParamField>
+
+<ParamField body="post" type="boolean" default="true">
+  When `true`, runs a content check on the completion before it is returned to your application. A block at this phase prevents unsafe completions from reaching users.
+</ParamField>
+
+<ParamField body="failClosed" type="boolean" default="false">
+  Controls behavior when the guardrail service itself returns an error (e.g. network timeout, service unavailable).
+
+  - `false` (default): errors from the guardrail service are swallowed and the LLM call proceeds normally.
+  - `true`: errors from the guardrail service are re-thrown, blocking the LLM call. Use this in high-risk applications where you prefer to fail safe.
+</ParamField>
+
+## Handling `GuardrailBlockedError`
+
+When a guardrail policy blocks content, the SDK throws a `GuardrailBlockedError`. Catch it to handle the block gracefully — for example, by returning a fallback response to the user.
+
+```typescript
+import { lumiqtrace, GuardrailBlockedError } from "@lumiqtrace/sdk";
+import OpenAI from "openai";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+const openai = lumiqtrace.wrapOpenAI(new OpenAI(), {
+  guardrails: { pre: true, post: true, failClosed: false },
+});
+
+async function generateResponse(userMessage: string): Promise<string> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: userMessage }],
+    });
+    return response.choices[0].message.content ?? "";
+  } catch (err) {
+    if (err instanceof GuardrailBlockedError) {
+      console.warn(`Guardrail blocked ${err.phase} content:`, err.results);
+      // Return a safe fallback rather than exposing the block reason
+      return "I'm sorry, I can't help with that request.";
+    }
+    throw err;
+  }
+}
+```
+
+## `GuardrailBlockedError` properties
+
+<ParamField body="phase" type="string">
+  Which phase was blocked: `"pre"` (input check) or `"post"` (output check).
+</ParamField>
+
+<ParamField body="results" type="GuardrailResult[]">
+  Array of results from individual guardrail policies that ran. Each result describes what the guardrail found and what action it took.
+</ParamField>
+
+## `GuardrailResult` fields
+
+Each entry in `error.results` represents one guardrail policy evaluation:
+
+<ParamField body="guardrailSlug" type="string">
+  Unique identifier of the guardrail policy that produced this result.
+</ParamField>
+
+<ParamField body="passed" type="boolean">
+  `true` if this guardrail allowed the content, `false` if it triggered.
+</ParamField>
+
+<ParamField body="action" type="string">
+  What the guardrail did. One of `"allowed"`, `"blocked"`, `"redacted"`, or `"warned"`.
+
+  - `"allowed"` — content passed without modification
+  - `"blocked"` — content was rejected; `GuardrailBlockedError` is thrown
+  - `"redacted"` — sensitive content was removed and the modified text is used instead
+  - `"warned"` — content was flagged but allowed through
+</ParamField>
+
+<ParamField body="reason" type="string">
+  Human-readable explanation of why this guardrail triggered, or `null` if it did not trigger.
+</ParamField>
+
+<ParamField body="modifiedText" type="string">
+  The redacted version of the text, or `null` if no modification was made. When a guardrail redacts content, the modified text is used in place of the original for the LLM call or returned response.
+</ParamField>
+
+## Guardrails on other wrappers
+
+Guardrails work on all provider wrappers. Pass the same `guardrails` option to `wrapAnthropic`, `wrapGoogle`, `wrapOpenRouter`, or the LangChain callback handler.
+
+```typescript
+// Anthropic with post-only check and fail-closed
+const anthropic = lumiqtrace.wrapAnthropic(new Anthropic(), {
+  guardrails: { pre: false, post: true, failClosed: true },
+});
+
+// LangChain with full guardrails
+import { LumiqtraceCallbackHandler } from "@lumiqtrace/sdk";
+const handler = new LumiqtraceCallbackHandler({
+  guardrails: { pre: true, post: true, failClosed: false },
+});
+```
+
+<Tip>
+  Configure your guardrail policies in the LumiqTrace dashboard under **Settings → Guardrails**. Policies are evaluated server-side, so you can update them without redeploying your application.
+</Tip>

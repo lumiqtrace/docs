@@ -1,0 +1,53 @@
+---
+title: "LumiqTrace: LLM Observability for Production AI"
+description: "LumiqTrace gives you complete visibility into every LLM call your application makes. Monitor costs, debug traces, and optimize performance in one dashboard."
+---
+
+LumiqTrace is an LLM observability platform that helps you understand exactly what your AI application is doing. Instrument your app with two lines of code, then explore real-time traces, costs, errors, and AI-powered insights in the LumiqTrace dashboard.
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Instrument your first LLM call and see data in the dashboard in under 5 minutes.
+  </Card>
+  <Card title="Core Concepts" icon="lightbulb" href="/concepts">
+    Understand traces, spans, projects, and how LumiqTrace models your LLM calls.
+  </Card>
+  <Card title="TypeScript SDK" icon="js" href="/sdk/typescript">
+    Wrap OpenAI, Anthropic, or Google clients with a single function call.
+  </Card>
+  <Card title="Python SDK" icon="python" href="/sdk/python">
+    Patch your Python LLM clients and use the `@trace` decorator for full coverage.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/authentication">
+    Explore the REST API to ingest events, query traces, and access AI features.
+  </Card>
+  <Card title="AI Features" icon="sparkles" href="/dashboard/ai-features">
+    Cost Optimizer, Anomaly Detection, NL Query, and Root Cause Analysis.
+  </Card>
+</CardGroup>
+
+## Get started in 3 steps
+
+<Steps>
+  <Step title="Create a project and get your API key">
+    Sign up at [lumiqtrace.com](https://lumiqtrace.com), create an organization, and create your first project. Your project API key (`lqt_...`) is shown once on creation — copy it now.
+  </Step>
+  <Step title="Install the SDK and wrap your LLM client">
+    Install `@lumiqtrace/sdk` (Node.js) or `lumiqtrace` (Python), initialize with your API key, and wrap your existing LLM client. No changes to your business logic required.
+
+    ```typescript
+    import { lumiqtrace } from "@lumiqtrace/sdk";
+    import OpenAI from "openai";
+
+    lumiqtrace.init({ apiKey: "lqt_your_key_here" });
+    const openai = lumiqtrace.wrapOpenAI(new OpenAI());
+    ```
+  </Step>
+  <Step title="View traces in the dashboard">
+    Make an LLM call as usual. Within seconds, the trace appears in your LumiqTrace dashboard with full cost, latency, and token breakdowns.
+  </Step>
+</Steps>
+
+<Note>
+  LumiqTrace is designed to be zero-latency for your application. All telemetry is batched and sent asynchronously — your LLM calls are never blocked.
+</Note>

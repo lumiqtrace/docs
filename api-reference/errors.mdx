@@ -1,0 +1,94 @@
+---
+title: "Errors and Rate Limits — LumiqTrace API"
+sidebarTitle: "Errors"
+description: "HTTP error codes, rate limits, and retry guidance for all LumiqTrace API endpoints, including ingest, dashboard, and AI features."
+---
+
+All LumiqTrace API errors return a JSON body with a single `error` field containing a human-readable message. HTTP status codes follow standard conventions — your client should branch on the status code, not the error string, since messages may change without notice.
+
+## HTTP Error Codes
+
+### 400 Bad Request
+
+The request body or parameters are invalid. Fix the request before retrying — retrying without changes will produce the same error.
+
+```json
+{
+  "error": "Max 100 events per batch"
+}
+```
+
+Common causes:
+- Sending more than 100 events in a single `POST /v1/ingest` call.
+- A required query parameter (such as `projectId`) is missing.
+- A field value does not match the expected type or format.
+
+### 401 Unauthorized
+
+Your request is missing credentials or the credentials provided are invalid or expired.
+
+```json
+{
+  "error": "Invalid API key"
+}
+```
+
+Check that:
+- You included the correct header (`x-api-key` for ingest, `Authorization: Bearer ...` for data endpoints).
+- Your API key has not been revoked from **Settings → API Keys**.
+- Your session token has not expired.
+
+### 403 Forbidden
+
+Your credentials are valid but you do not have permission to access the requested resource.
+
+```json
+{
+  "error": "Not a member of this organization"
+}
+```
+
+This typically means your account does not belong to the organization that owns the project you are requesting. Contact your organization owner to request access.
+
+### 429 Too Many Requests
+
+You have exceeded a rate limit. The response includes a `Retry-After` header indicating the number of seconds to wait before retrying.
+
+```json
+{
+  "error": "Monthly quota exceeded"
+}
+```
+
+<Warning>
+A `429` on `POST /v1/ingest` may indicate that your organization has exhausted its monthly event quota, not just a per-minute rate limit. In that case, retrying later in the same month will not succeed — you need to upgrade your plan or wait for the quota to reset.
+</Warning>
+
+### 500 Internal Server Error
+
+An unexpected error occurred on the LumiqTrace servers. This is not caused by your request. Retry with exponential backoff — most transient errors resolve within a few seconds.
+
+```json
+{
+  "error": "Internal server error"
+}
+```
+
+## Rate Limits
+
+| Endpoint group | Limit |
+|---|---|
+| `POST /v1/ingest` | 1,000 requests/minute per API key |
+| Dashboard endpoints (data, metrics) | 300 requests/minute per session |
+| AI endpoints (`/v1/ai/*`) | 20 requests/hour per organization |
+
+<Note>
+Rate limits are enforced using a sliding window algorithm. If you hit the ingest rate limit frequently, consider batching more events per request (up to the 100-event maximum) to reduce request count.
+</Note>
+
+## Retry Guidance
+
+- **400**: Do not retry without fixing the request.
+- **401 / 403**: Do not retry — fix credentials or permissions first.
+- **429**: Wait for the number of seconds specified in the `Retry-After` response header, then retry.
+- **500**: Retry with exponential backoff starting at 1 second. If errors persist beyond a few minutes, check the [LumiqTrace status page](https://status.lumiqtrace.com).

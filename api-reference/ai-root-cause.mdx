@@ -1,0 +1,161 @@
+---
+title: "AI Root Cause Analysis — LumiqTrace API"
+sidebarTitle: "Root Cause Analysis"
+description: "Submit a failed trace for AI-powered root cause analysis and receive structured diagnostics, fix steps, and a prevention tip via POST /v1/ai/root-cause."
+---
+
+Root Cause Analysis uses AI reasoning to examine every span in a failed or slow trace and produce a structured diagnosis: a plain-English summary, the specific span responsible for the problem, contributing factors, prioritized fix steps with implementation guidance, and a prevention tip. This endpoint is available on **Pro plans and above**.
+
+<Warning>
+Root Cause Analysis uses AI extended reasoning, which takes between 5 and 30 seconds to complete. The endpoint is asynchronous — your first request returns `202 Accepted` while analysis runs in the background. Poll the same endpoint until you receive a `200 OK` response. Do not call the endpoint more frequently than every 3 seconds while polling.
+</Warning>
+
+Results are cached for 48 hours per trace. If you submit the same `traceId` again within that window, you receive the cached result immediately with a `200` status.
+
+## Endpoint
+
+```
+POST https://api.lumiqtrace.com/v1/ai/root-cause/:traceId
+```
+
+**Authentication:** `Authorization: Bearer <token>` (see [Authentication](/api-reference/authentication))
+**Plan:** Pro+
+**Rate limit:** 20 requests/hour per organization
+
+## Path Parameters
+
+<ParamField path="traceId" type="string" required>
+  The `trace_id` of the trace you want to analyze. The trace must belong to the project specified in the request body.
+</ParamField>
+
+## Request Body
+
+<ParamField body="projectId" type="string" required>
+  The ID of the project that owns this trace.
+</ParamField>
+
+## Example Request
+
+<CodeGroup>
+```bash curl
+curl -X POST https://api.lumiqtrace.com/v1/ai/root-cause/trace-xyz \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{ "projectId": "proj_abc123" }'
+```
+
+```typescript TypeScript
+async function analyzeTrace(traceId: string, projectId: string) {
+  const url = `https://api.lumiqtrace.com/v1/ai/root-cause/${traceId}`;
+  const options = {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ projectId }),
+  };
+
+  // Poll until analysis is complete
+  while (true) {
+    const response = await fetch(url, options);
+
+    if (response.status === 200) {
+      return await response.json();
+    }
+
+    if (response.status === 202) {
+      // Analysis still running — wait 3 seconds before polling again
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      continue;
+    }
+
+    throw new Error(`Unexpected status: ${response.status}`);
+  }
+}
+
+const result = await analyzeTrace("trace-xyz", "proj_abc123");
+```
+</CodeGroup>
+
+## Responses
+
+### 202 Accepted — Analysis in progress
+
+The analysis job has been queued. Continue polling.
+
+```json
+{
+  "status": "processing"
+}
+```
+
+### 200 OK — Analysis complete
+
+```json
+{
+  "summary": "The trace failed due to a context length error on the summarization span after an oversized document was passed without truncation. A preceding embedding call succeeded but generated an unexpectedly large chunk.",
+  "root_cause_type": "context_length_exceeded",
+  "problem_span_id": "span-004",
+  "contributing_factors": [
+    "Document chunking strategy does not enforce a maximum token limit before passing to the model",
+    "No retry or fallback logic for context length errors",
+    "Input validation does not reject documents above a safe token threshold"
+  ],
+  "fix_steps": [
+    {
+      "priority": 1,
+      "action": "Add input token validation before the summarization call",
+      "implementation": "Use a tokenizer (e.g., tiktoken) to count input tokens before the API call. If the count exceeds 80% of the model's context window, truncate or split the input.",
+      "prevents_recurrence": true
+    },
+    {
+      "priority": 2,
+      "action": "Implement a fallback to a larger context model",
+      "implementation": "Catch 'context_length_exceeded' errors and retry with a model that has a larger context window, such as gpt-4o with 128K tokens.",
+      "prevents_recurrence": false
+    }
+  ],
+  "prevention_tip": "Add a pre-flight token count check to all document processing pipelines. Set a hard limit at 75% of the target model's context window to leave room for system prompts and output tokens."
+}
+```
+
+<ResponseField name="summary" type="string">
+  A plain-English explanation of what went wrong in this trace and why.
+</ResponseField>
+
+<ResponseField name="root_cause_type" type="string">
+  A machine-readable classification of the root cause. Examples: `context_length_exceeded`, `rate_limited`, `timeout`, `model_error`, `slow_span`.
+</ResponseField>
+
+<ResponseField name="problem_span_id" type="string">
+  The `span_id` of the span most responsible for the failure or slowness. Use this to navigate directly to the problematic span in the Trace Viewer.
+</ResponseField>
+
+<ResponseField name="contributing_factors" type="string[]">
+  An ordered list of factors that contributed to the failure, from most to least significant.
+</ResponseField>
+
+<ResponseField name="fix_steps" type="object[]">
+  Prioritized list of concrete actions to resolve the issue.
+</ResponseField>
+
+<ResponseField name="fix_steps[].priority" type="number">
+  Fix priority, starting at 1 for the most important step.
+</ResponseField>
+
+<ResponseField name="fix_steps[].action" type="string">
+  Short description of the action to take.
+</ResponseField>
+
+<ResponseField name="fix_steps[].implementation" type="string">
+  Specific implementation guidance for applying the fix.
+</ResponseField>
+
+<ResponseField name="fix_steps[].prevents_recurrence" type="boolean">
+  `true` if this fix eliminates the root cause entirely. `false` if it mitigates symptoms but does not fully prevent recurrence.
+</ResponseField>
+
+<ResponseField name="prevention_tip" type="string">
+  A high-level best practice to prevent this class of failure in the future.
+</ResponseField>

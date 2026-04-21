@@ -1,0 +1,206 @@
+---
+title: "Framework integrations — LangChain and Google ADK"
+sidebarTitle: "Integrations"
+description: "Integrate LumiqTrace with LangChain and Google ADK using callback handlers and wrapper functions, with full support for tools, chains, and multi-agent systems."
+---
+
+LumiqTrace provides native integrations for LangChain and Google ADK. These integrations hook into each framework's lifecycle to automatically trace LLM calls, tool invocations, chains, retrievers, and agent-to-agent handoffs — with no changes to your chain or agent logic.
+
+## LangChain
+
+The `LumiqtraceCallbackHandler` extends LangChain's `BaseCallbackHandler` and handles the full event lifecycle: `handleLLMStart`, `handleLLMEnd`, `handleChainStart/End`, `handleToolStart/End`, `handleRetrieverStart/End`, and `handleAgentAction`. Every LLM call, tool call, and retrieval is captured as a linked span in the same trace.
+
+<Tabs>
+  <Tab title="TypeScript">
+    Install the peer dependency:
+
+    ```bash
+    npm install @langchain/core @langchain/openai
+    ```
+
+    Pass a `LumiqtraceCallbackHandler` instance in the `callbacks` array of any LangChain LLM, chain, or agent:
+
+    ```typescript
+    import { lumiqtrace, LumiqtraceCallbackHandler } from "@lumiqtrace/sdk";
+    import { ChatOpenAI } from "@langchain/openai";
+    import { HumanMessage } from "@langchain/core/messages";
+
+    lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+    const handler = new LumiqtraceCallbackHandler();
+
+    const llm = new ChatOpenAI({
+      model: "gpt-4o",
+      callbacks: [handler],
+    });
+
+    const response = await llm.invoke([
+      new HumanMessage("Summarize the history of the internet."),
+    ]);
+    console.log(response.content);
+    ```
+
+    The handler automatically detects the provider from the model name, extracts tool call definitions and results, and propagates trace context through nested chains.
+  </Tab>
+  <Tab title="Python">
+    Install the peer dependency:
+
+    ```bash
+    pip install langchain-core langchain-openai
+    ```
+
+    Pass a `LumiqtraceCallbackHandler` instance in the `callbacks` list:
+
+    ```python
+    import lumiqtrace
+    from lumiqtrace.integrations.langchain_handler import LumiqtraceCallbackHandler
+    from langchain_openai import ChatOpenAI
+    from langchain_core.messages import HumanMessage
+
+    lumiqtrace.init(api_key="lqt_your_api_key_here")
+
+    handler = LumiqtraceCallbackHandler()
+
+    llm = ChatOpenAI(model="gpt-4o", callbacks=[handler])
+
+    response = llm.invoke([HumanMessage(content="What is the Turing test?")])
+    print(response.content)
+    ```
+
+    The Python handler supports both sync and async chains and shares the same span schema as the TypeScript version.
+  </Tab>
+</Tabs>
+
+<Note>
+  When used with an `AgentExecutor` or `ReactAgent`, the handler automatically sets `span_kind: "agent"` on the chain span and links tool spans as children. Planning steps detected from the agent's output are surfaced in the planning view.
+</Note>
+
+## Google ADK
+
+LumiqTrace provides three integration patterns for Google ADK, each suited to a different usage scenario.
+
+<Tabs>
+  <Tab title="TypeScript">
+    Install the peer dependency:
+
+    ```bash
+    npm install @google/adk
+    ```
+
+    **Recommended: `instrumentADK` (single call)**
+
+    `instrumentADK` wraps both the coordinator agent and its runner in one call. Use this for production ADK applications.
+
+    ```typescript
+    import { lumiqtrace, instrumentADK } from "@lumiqtrace/sdk";
+    import { Agent, InMemoryRunner } from "@google/adk";
+
+    lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+    const coordinator = new Agent({
+      model: "gemini-2.5-pro",
+      name: "SupportCoordinator",
+      subAgents: [policyAgent, orderAgent],
+    });
+
+    const runner = new InMemoryRunner({ agent: coordinator });
+
+    // Wrap both at once
+    const { coordinator: tc, runner: tr } = instrumentADK({
+      coordinator,
+      runner,
+      agentName: "SupportCoordinator",
+      agentRole: "coordinator",
+    });
+
+    // Use tr exactly as you would the original runner
+    for await (const event of tr.runEphemeral({ userId: "u1", newMessage })) {
+      // handle event
+    }
+    ```
+
+    **`wrapADKRunner` — production runner wrapping**
+
+    Wraps `InMemoryRunner.runEphemeral()` and `Runner.run()` by intercepting the ADK event stream. Emits one span per agent author turn, one span per tool call, and handoff spans on delegation.
+
+    ```typescript
+    import { lumiqtrace, wrapADKRunner } from "@lumiqtrace/sdk";
+
+    const runner = wrapADKRunner(new InMemoryRunner({ agent: coordinator }), {
+      agentName: "SupportCoordinator",
+      agentRole: "coordinator",
+      model: "gemini-2.5-pro",
+      sessionId: req.sessionId,
+    });
+    ```
+
+    **`wrapADKAgent` — direct agent wrapping**
+
+    Wraps `agent.run()` directly. Best for tests and simple scripts. Recursively wraps `subAgents` by default.
+
+    ```typescript
+    import { lumiqtrace, wrapADKAgent } from "@lumiqtrace/sdk";
+
+    const tracedAgent = wrapADKAgent(myAgent, {
+      agentName: "MyAgent",
+      agentRole: "specialist",
+      traceSubAgents: true,
+    });
+    ```
+
+    All three functions automatically capture token counts (including cached and reasoning tokens), tool call arguments and results, finish reasons, and agent-to-agent delegation events.
+  </Tab>
+  <Tab title="Python">
+    Install the peer dependency:
+
+    ```bash
+    pip install google-adk lumiqtrace
+    ```
+
+    Pass your agent to `LumiqtraceADKTracer` after creating it. The tracer attaches `before_model_call` and `after_model_call` hooks to capture every model call, tool invocation, and agent session as hierarchical spans.
+
+    ```python
+    import lumiqtrace
+    from google.adk import Agent
+    from lumiqtrace.integrations.google_adk import LumiqtraceADKTracer
+
+    lumiqtrace.init(api_key="lqt_your_api_key_here")
+
+    agent = Agent(model="gemini-2.5-pro", tools=[my_tool])
+    LumiqtraceADKTracer(agent)  # done — all model calls are now traced
+
+    response = await agent.run("Help me track my order #123")
+    ```
+  </Tab>
+</Tabs>
+
+## OpenTelemetry
+
+If you export to an existing OpenTelemetry-compatible backend (Jaeger, Honeycomb, Grafana Tempo, etc.), you can enable the OTEL exporter alongside LumiqTrace's native ingest.
+
+```typescript
+import { lumiqtrace, initOTel } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({
+  apiKey: process.env.LUMIQTRACE_API_KEY!,
+  enableOTel: true,
+  otelEndpoint: "https://otel.your-backend.com/v1/traces",
+  otelServiceName: "my-llm-service",
+});
+```
+
+Or call `initOTel` directly for standalone OTEL configuration:
+
+```typescript
+import { initOTel } from "@lumiqtrace/sdk";
+
+initOTel({
+  endpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+  serviceName: "my-service",
+  sampleRate: 0.5,
+});
+```
+
+<Note>
+  When `enableOTel` is `true`, LumiqTrace emits spans to both the LumiqTrace ingest endpoint and the OTEL exporter simultaneously. You do not need to choose one or the other.
+</Note>

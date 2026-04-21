@@ -1,0 +1,103 @@
+---
+title: 'Organizations: workspaces, members, and settings'
+description: 'Learn how to create and manage organizations in LumiqTrace, invite team members, assign roles, and control access to your projects and billing.'
+sidebarTitle: 'Organizations'
+---
+
+An organization is your top-level workspace in LumiqTrace. It contains your projects, holds your billing subscription, and groups the team members who can access your data. Every project you create belongs to an organization, and all usage — events ingested, data retained, and members invited — counts against that organization's plan. You can belong to multiple organizations and switch between them at any time.
+
+## Creating an organization
+
+When you sign up for LumiqTrace, the onboarding wizard walks you through creating your first organization automatically. If you need additional organizations later, you can create up to **3 organizations per account**.
+
+<Steps>
+  <Step title="Open the org switcher">
+    Click the organization name in the top of the left sidebar. At the bottom of the dropdown, select **Create new workspace**.
+  </Step>
+  <Step title="Name your organization">
+    Enter a display name for the organization. This name appears in the sidebar and in email notifications to your team.
+  </Step>
+  <Step title="Create your first project">
+    Give your first project a name. A project is the ingest scope that your SDK will target — each project gets its own API key.
+  </Step>
+  <Step title="Install the SDK">
+    Copy the SDK snippet shown on screen and add it to your application. The snippet includes your project's API key pre-filled.
+  </Step>
+  <Step title="See your first data">
+    LumiqTrace waits for your first event to arrive. Once it does, you're redirected to the project dashboard automatically.
+  </Step>
+</Steps>
+
+## Switching organizations
+
+The **org switcher** is the dropdown in the top of the left sidebar. Click it to see all organizations you belong to, then select one to switch your active context. Everything in the dashboard — projects, usage, settings — reflects the selected organization.
+
+## Inviting team members
+
+You can invite teammates to your organization from **Settings > Team**. Invitations are role-scoped, so you assign a role at the time of invite.
+
+<Note>
+  The Free and Pro plans are limited to 1 member (the owner). You must be on the Team plan or higher to invite additional members.
+</Note>
+
+<Steps>
+  <Step title="Open team settings">
+    Navigate to **Settings > Team** within your organization.
+  </Step>
+  <Step title="Click Invite member">
+    Enter the teammate's email address and select a role — **Admin** or **Member**.
+  </Step>
+  <Step title="Send the invitation">
+    Click **Send invite**. LumiqTrace sends an email to that address with a link to accept. Invitations expire after **7 days** if not accepted.
+  </Step>
+</Steps>
+
+You can view pending invitations in the same Team settings page and resend or cancel them at any time.
+
+## Roles and permissions
+
+LumiqTrace has three roles: **Owner**, **Admin**, and **Member**.
+
+| Permission | Owner | Admin | Member |
+|---|---|---|---|
+| View dashboards and traces | Yes | Yes | Yes |
+| Manage projects | Yes | Yes | No |
+| Manage API keys | Yes | Yes | No |
+| Manage alerts | Yes | Yes | No |
+| Use AI features | Yes | Yes | No |
+| View billing | Yes | Yes | No |
+| Manage billing and payment | Yes | No | No |
+| Delete the organization | Yes | No | No |
+
+Every organization has exactly one owner — the person who created it. Ownership cannot be transferred through the dashboard.
+
+## Changing a member's role
+
+In **Settings > Team**, each member row has a role selector. Admins and owners can change any member's role between **Admin** and **Member**. You cannot change the owner's role.
+
+## Removing a member
+
+Click **Remove** next to any member in **Settings > Team** to revoke their access immediately. Removed members lose access to all projects in the organization. The owner cannot be removed.
+
+## Renaming your organization
+
+Go to **Settings > General** and update the **Organization name** field. The new name takes effect immediately across the dashboard and in any email notifications.
+
+## Deleting an organization
+
+<Warning>
+  Deleting an organization is permanent and cannot be undone. All projects, trace data, and API keys are destroyed immediately, and your billing subscription is cancelled at the end of the current period.
+</Warning>
+
+Only the **owner** can delete an organization. To do so, go to **Settings > General**, scroll to the **Danger zone** section, and click **Delete organization**. You will be asked to confirm by typing the organization's name.
+
+## Plan limits for members
+
+| Plan | Members included |
+|---|---|
+| Free | 1 (owner only) |
+| Pro — $29/mo | 1 (owner only) |
+| Team — $99/mo | Up to 10 |
+| Scale — $299/mo | Unlimited |
+
+To add more members than your plan allows, upgrade from **Settings > Billing**. See [Billing](/account/billing) for a full plan comparison.

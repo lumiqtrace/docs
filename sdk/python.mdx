@@ -1,0 +1,205 @@
+---
+title: "Python SDK — lumiqtrace"
+sidebarTitle: "Python SDK"
+description: "Install and configure the LumiqTrace Python SDK to trace OpenAI calls, decorate functions, manage agent workflows, and flush events in serverless environments."
+---
+
+The LumiqTrace Python SDK instruments your Python LLM application with a single `init()` call and a monkey-patch for OpenAI. It uses a background daemon thread to flush events without blocking your application, and registers an `atexit` handler to flush on process exit.
+
+## Installation
+
+```bash
+pip install lumiqtrace
+```
+
+## Initialization
+
+Call `lumiqtrace.init()` once at startup before making any LLM calls. All parameters are keyword arguments.
+
+```python
+import lumiqtrace
+
+lumiqtrace.init(
+    api_key="lqt_your_api_key_here",
+    environment="production",
+    store_prompts=False,
+    sample_rate=1.0,
+    debug=False,
+)
+```
+
+**Parameters:**
+
+<ParamField body="api_key" type="string" required>
+  Your LumiqTrace API key. Must start with `lqt_`. Find this in your project settings.
+</ParamField>
+
+<ParamField body="environment" type="string" default="production">
+  Environment label attached to every event. Use `"staging"` or `"development"` to separate traces by environment.
+</ParamField>
+
+<ParamField body="store_prompts" type="boolean" default="False">
+  When `True`, prompt text and completion text are stored alongside traces. Disabled by default for privacy.
+</ParamField>
+
+<ParamField body="sample_rate" type="float" default="1.0">
+  Fraction of events to send, between `0.0` and `1.0`. Set to `0.1` to trace 10% of calls.
+</ParamField>
+
+<ParamField body="debug" type="boolean" default="False">
+  When `True`, logs internal flush errors to stdout. Enable during integration testing.
+</ParamField>
+
+## Tracing OpenAI calls
+
+Call `lumiqtrace.patch_openai()` after `init()` to automatically trace all OpenAI calls — both synchronous and asynchronous — without modifying your existing code.
+
+```python
+import openai
+import lumiqtrace
+
+lumiqtrace.init(api_key="lqt_your_api_key_here")
+lumiqtrace.patch_openai()
+
+client = openai.OpenAI()
+
+# Sync
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "What is the capital of France?"}],
+)
+print(response.choices[0].message.content)
+
+# Async
+import asyncio
+import openai as openai_async
+
+async def main():
+    async_client = openai_async.AsyncOpenAI()
+    response = await async_client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": "Translate 'hello' to Spanish."}],
+    )
+    print(response.choices[0].message.content)
+
+asyncio.run(main())
+```
+
+## Tracing functions with `@lumiqtrace.trace`
+
+Use the `@lumiqtrace.trace` decorator to trace any sync or async function as a custom span. The `name` parameter sets the operation name in the trace view.
+
+```python
+import lumiqtrace
+
+lumiqtrace.init(api_key="lqt_your_api_key_here")
+lumiqtrace.patch_openai()
+
+@lumiqtrace.trace(name="rag-pipeline")
+async def run_rag(query: str) -> str:
+    # All OpenAI calls inside here inherit the same trace context
+    docs = await retrieve_documents(query)
+    response = await openai_client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": f"Use these docs: {docs}"},
+            {"role": "user", "content": query},
+        ],
+    )
+    return response.choices[0].message.content
+
+@lumiqtrace.trace(name="answer-question")
+def answer_sync(question: str) -> str:
+    # Works with synchronous functions too
+    response = openai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": question}],
+    )
+    return response.choices[0].message.content
+```
+
+## Agent tracing with `with_agent`
+
+Use the `with_agent` context manager to trace a multi-step agent workflow. It creates an agent span and exposes methods to log plans, trace tool calls, and record handoffs to other agents.
+
+```python
+import lumiqtrace
+from lumiqtrace import with_agent
+
+lumiqtrace.init(api_key="lqt_your_api_key_here")
+lumiqtrace.patch_openai()
+
+with with_agent(
+    name="CustomerSupportAgent",
+    role="specialist",
+    framework="custom",
+    tools=[{"name": "lookup_order", "description": "Lookup order by id"}],
+) as agent:
+    # Log the steps the agent plans to take
+    agent.log_plan(["Lookup order", "Check refund policy", "Draft response"])
+
+    # Trace a tool call — wraps the callable and records args + result
+    order = agent.trace_tool(
+        "lookup_order",
+        {"order_id": "123"},
+        lambda: {"id": "123", "status": "delivered", "total": 49.99},
+    )
+
+    # Record a handoff to another agent
+    agent.delegate_to("RefundPolicyAgent", "refund requested")
+```
+
+**`with_agent` parameters:**
+
+<ParamField body="name" type="string" required>
+  Display name for this agent in traces and the agent registry.
+</ParamField>
+
+<ParamField body="role" type="string" default="specialist">
+  Role label such as `"coordinator"`, `"specialist"`, or `"planner"`.
+</ParamField>
+
+<ParamField body="framework" type="string" default="custom">
+  Framework name, e.g. `"custom"`, `"langchain"`, `"google-adk"`.
+</ParamField>
+
+<ParamField body="tools" type="object[]">
+  List of tool definition objects with `name` and `description` fields. These appear in the tool discovery view.
+</ParamField>
+
+**`AgentContext` methods:**
+
+- `agent.log_plan(steps: list[str])` — records a planning span with the steps list
+- `agent.trace_tool(name, args, callable)` — wraps a callable, records args and return value as a tool span
+- `agent.delegate_to(target_name, reason)` — records a handoff span
+
+<Note>
+  All LLM calls made inside a `with_agent` block automatically inherit the agent's trace context. You do not need to pass the agent object to nested functions.
+</Note>
+
+## Flushing in serverless environments
+
+In short-lived processes such as AWS Lambda, Vercel Functions, or Cloud Run, the background flush thread may not have time to send events before the process exits. Call `lumiqtrace.flush()` explicitly before the handler returns to guarantee delivery.
+
+```python
+import lumiqtrace
+
+lumiqtrace.init(api_key="lqt_your_api_key_here")
+lumiqtrace.patch_openai()
+
+def lambda_handler(event, context):
+    response = openai_client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": event["prompt"]}],
+    )
+    result = response.choices[0].message.content
+
+    # Ensure all buffered events are sent before Lambda freezes
+    lumiqtrace.flush()
+
+    return {"statusCode": 200, "body": result}
+```
+
+<Warning>
+  Omitting `lumiqtrace.flush()` in serverless environments is the most common cause of missing traces. Always call it before your handler returns.
+</Warning>

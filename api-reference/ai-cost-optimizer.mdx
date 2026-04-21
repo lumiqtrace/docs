@@ -1,0 +1,118 @@
+---
+title: "AI Cost Optimizer — LumiqTrace API"
+sidebarTitle: "Cost Optimizer"
+description: "Get AI-generated cost reduction recommendations for your LLM usage, including model switching, caching, and prompt optimization strategies."
+---
+
+The Cost Optimizer analyzes your last 30 days of LLM spending and generates specific, prioritized recommendations for reducing costs. Each recommendation includes a category, estimated monthly savings, confidence score, implementation effort, tradeoffs to consider, and a concrete code example. This endpoint is available on **Pro plans and above**.
+
+Results are cached for 24 hours per project. Calling the endpoint multiple times within that window returns the cached result instantly without consuming an AI credit.
+
+## Endpoint
+
+```
+GET https://api.lumiqtrace.com/v1/ai/cost-optimizer
+```
+
+**Authentication:** `Authorization: Bearer <token>` (see [Authentication](/api-reference/authentication))
+**Plan:** Pro+
+**Rate limit:** 20 requests/hour per organization
+
+## Query Parameters
+
+<ParamField query="projectId" type="string" required>
+  The ID of the project to analyze.
+</ParamField>
+
+## Example Request
+
+<CodeGroup>
+```bash curl
+curl "https://api.lumiqtrace.com/v1/ai/cost-optimizer?projectId=proj_abc123" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```typescript TypeScript
+const response = await fetch(
+  "https://api.lumiqtrace.com/v1/ai/cost-optimizer?projectId=proj_abc123",
+  {
+    headers: {
+      Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    },
+  }
+);
+
+const result = await response.json();
+```
+</CodeGroup>
+
+## Response
+
+**200 OK**
+
+```json
+{
+  "total_spend_usd": 487.34,
+  "potential_savings_usd": 142.10,
+  "recommendations": [
+    {
+      "title": "Switch classification calls from gpt-4o to gpt-4o-mini",
+      "description": "40% of your gpt-4o calls produce responses under 50 output tokens, which is a strong signal for classification or routing tasks. gpt-4o-mini handles these with equivalent accuracy at ~94% lower cost.",
+      "category": "model-switching",
+      "monthly_savings_usd": 89.20,
+      "confidence": 0.91,
+      "effort": "low",
+      "tradeoff": "Minor quality degradation possible on edge-case inputs. Recommend running an eval before deploying to production.",
+      "code_example": "// Before\nconst response = await openai.chat.completions.create({\n  model: 'gpt-4o',\n  messages,\n});\n\n// After — use gpt-4o-mini for short-output classification tasks\nconst response = await openai.chat.completions.create({\n  model: 'gpt-4o-mini',\n  messages,\n});"
+    }
+  ]
+}
+```
+
+<ResponseField name="total_spend_usd" type="number">
+  Total LLM spend in USD over the last 30 days for this project.
+</ResponseField>
+
+<ResponseField name="potential_savings_usd" type="number">
+  Sum of `monthly_savings_usd` across all recommendations with confidence ≥ 0.6.
+</ResponseField>
+
+<ResponseField name="recommendations" type="object[]">
+  List of cost reduction recommendations sorted by `monthly_savings_usd` descending. Only recommendations with confidence ≥ 0.6 are included.
+</ResponseField>
+
+<ResponseField name="recommendations[].title" type="string">
+  Short title describing the recommendation.
+</ResponseField>
+
+<ResponseField name="recommendations[].description" type="string">
+  Explanation of why this recommendation applies to your usage patterns.
+</ResponseField>
+
+<ResponseField name="recommendations[].category" type="string">
+  Category of the optimization. Examples: `model-switching`, `prompt-caching`, `batching`, `prompt-compression`.
+</ResponseField>
+
+<ResponseField name="recommendations[].monthly_savings_usd" type="number">
+  Estimated monthly savings in USD if you implement this recommendation.
+</ResponseField>
+
+<ResponseField name="recommendations[].confidence" type="number">
+  Confidence score between 0 and 1. Recommendations below 0.6 are filtered out before the response is returned.
+</ResponseField>
+
+<ResponseField name="recommendations[].effort" type="string">
+  Implementation effort level. One of `low`, `medium`, or `high`.
+</ResponseField>
+
+<ResponseField name="recommendations[].tradeoff" type="string">
+  Description of any quality, latency, or reliability tradeoffs to consider before implementing.
+</ResponseField>
+
+<ResponseField name="recommendations[].code_example" type="string">
+  A concrete code snippet illustrating how to implement the recommendation.
+</ResponseField>
+
+<Note>
+Results are cached for 24 hours. If you want a fresh analysis — for example, after making significant changes to your LLM usage — wait for the cache to expire or contact support to request a cache invalidation.
+</Note>
