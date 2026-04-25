@@ -1,0 +1,149 @@
+---
+title: "Evaluations — measure and trend custom LLM metrics"
+sidebarTitle: "Evaluations"
+description: "Define custom evaluation metrics, run them against your traces, and track results over time to detect quality regressions and measure the impact of prompt changes."
+---
+
+Evaluations let you define custom quality metrics for your LLM outputs and measure them against real production traces.
+
+<Frame>
+  <img src="/images/evaluation.png" alt="LumiqTrace evaluations dashboard showing score trends and per-trace results" />
+</Frame>
+
+Instead of guessing whether a prompt change improved quality, you define what "good" means numerically, run an evaluation, and see scores trend over time. LumiqTrace uses an LLM-as-judge approach: your evaluator definition is a prompt that an AI model applies to each trace, producing a numeric score.
+
+<Note>
+  Evaluations are available on the **Team** and **Scale** plans. On Pro, you can define evaluators but monthly run limits apply.
+</Note>
+
+## How evaluations work
+
+An evaluator is a named metric definition that consists of:
+
+1. **A scoring prompt** — instructions for the judge model describing what to measure and how to score it
+2. **A score range** — typically 0.0 to 1.0
+3. **An input target** — whether to evaluate the prompt, the completion, or both
+
+When you run an evaluation, LumiqTrace submits each selected trace to the judge model (Claude Haiku by default for speed and cost) with your scoring prompt. The model returns a numeric score. Scores are stored and displayed as trends on the Evaluations page.
+
+You can also attach scores programmatically from the SDK using `span.setEvalScore()`. Both sources — programmatic and LLM-as-judge — appear in the same dashboard.
+
+## Creating an evaluator
+
+<Steps>
+  <Step title="Open the Evaluations page">
+    Navigate to **Evaluations** in the left sidebar.
+  </Step>
+  <Step title="Click New evaluator">
+    The evaluator creation dialog opens.
+  </Step>
+  <Step title="Name your evaluator">
+    Give it a short name like `faithfulness`, `toxicity`, or `response-quality`. The name becomes the metric identifier in trend charts.
+  </Step>
+  <Step title="Write the scoring prompt">
+    Write a prompt that tells the judge model what to evaluate and how to produce a score. Be specific.
+
+    **Example — faithfulness evaluator:**
+    ```
+    You are evaluating whether an AI assistant's response is faithful to the 
+    context provided. Score from 0.0 to 1.0, where:
+    - 1.0 = the response only contains information supported by the context
+    - 0.5 = some information is supported but the response adds unverified claims
+    - 0.0 = the response contradicts the context or is entirely unsupported
+
+    Context: {{context}}
+    Response: {{completion}}
+
+    Return only a number between 0.0 and 1.0.
+    ```
+  </Step>
+  <Step title="Choose an input target">
+    Select whether the evaluator should receive the **completion** text, the **prompt** text, or both. This determines which fields are substituted for `{{completion}}` and `{{prompt}}` in your scoring prompt.
+  </Step>
+  <Step title="Save the evaluator">
+    Click **Save**. The evaluator appears in your evaluator list and is ready to run.
+  </Step>
+</Steps>
+
+<Warning>
+  Evaluations require `storePrompts: true` to be set in your SDK if you want to evaluate prompt text. Without stored prompts, only the completion (if stored) is available to the judge. If neither is stored, evaluation results will be empty.
+</Warning>
+
+## Running evaluations
+
+After creating an evaluator, you run it against a selection of traces.
+
+**Auto-evaluation:** Enable **Auto-run** on an evaluator to have it score every new trace automatically as it arrives. This is useful for monitoring ongoing quality in production.
+
+**Manual run:** Click **Run now** on any evaluator to score a batch of recent traces immediately. You can choose how many recent traces to include (up to 500).
+
+Both modes display results in the evaluator's trend chart within a few minutes of completion.
+
+## Reading evaluation results
+
+The main Evaluations page shows all your evaluators as cards. Each card displays:
+
+- **Name** — the evaluator identifier
+- **Latest score** — the most recent average score across the last batch of evaluated traces
+- **Trend** — a sparkline showing how the score has changed over the last 30 days
+- **Sample count** — how many traces were scored in the latest run
+
+Click an evaluator card to open the full detail view with:
+
+- A time-series chart of average score by day
+- A distribution histogram showing score spread
+- A table of individual trace scores with links to the trace detail view
+
+<Tip>
+  If your evaluator score drops sharply after a deployment, open the **Traces** page and filter to the same time window. The evaluation score is shown in the trace detail panel so you can correlate low-scoring traces with specific model calls.
+</Tip>
+
+## Attaching scores from the SDK
+
+You can attach evaluation scores to any span programmatically using `span.setEvalScore()`. This is useful when you compute quality scores in your own code — for example, using a custom similarity function for RAG faithfulness.
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    import { lumiqtrace, startSpan } from "@lumiqtrace/sdk";
+
+    const { span } = startSpan({ name: "rag-pipeline", provider: "custom" });
+
+    try {
+      const answer = await generateAnswer(query, docs);
+
+      // Attach your computed scores before closing the span
+      span.setEvalScore("faithfulness", computeFaithfulness(answer, docs));
+      span.setEvalScore("relevance", computeRelevance(answer, query));
+
+      await span.end({ status: "success" });
+      return answer;
+    } catch (err) {
+      await span.end({ status: "error", error_message: String(err) });
+      throw err;
+    }
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    from lumiqtrace import start_span
+
+    with start_span(name="rag-pipeline", provider="custom") as span:
+        answer = generate_answer(query, docs)
+
+        span.set_eval_score("faithfulness", compute_faithfulness(answer, docs))
+        span.set_eval_score("relevance", compute_relevance(answer, query))
+    ```
+  </Tab>
+</Tabs>
+
+Scores attached via the SDK appear in the same trend charts as LLM-as-judge scores. If you attach a score with the same name as an evaluator, both sources are shown together in the detail view.
+
+## Plan limits
+
+| Plan | Auto-evaluation | Evaluator definitions | Monthly scored traces |
+|------|----------------|----------------------|----------------------|
+| Free | Not available | — | — |
+| Pro | Not available | 3 | 1,000 |
+| Team | Included | Unlimited | 25,000 |
+| Scale | Included | Unlimited | Unlimited |

@@ -1,0 +1,222 @@
+---
+title: "Self-hosting LumiqTrace"
+sidebarTitle: "Self-hosting"
+description: "Deploy LumiqTrace on your own infrastructure with an Enterprise license. Get a Docker image, license key, and full data sovereignty for your agent observability stack."
+---
+
+Self-hosted LumiqTrace is available on the **Enterprise plan**. It gives your team full data sovereignty — all traces, metrics, and AI analysis stay within your own infrastructure and never leave your network. You receive a commercially licensed Docker image, a license key, and dedicated support for deployment and upgrades.
+
+<Note>
+  Self-hosting requires an Enterprise license. Contact [enterprise@lumiqtrace.com](mailto:enterprise@lumiqtrace.com) to discuss pricing and receive your license key and Docker registry credentials.
+</Note>
+
+## What you get with Enterprise self-hosting
+
+<CardGroup cols={2}>
+  <Card title="Docker image" icon="box">
+    A signed Docker image pulled from the LumiqTrace private registry. New versions are published with each release.
+  </Card>
+  <Card title="License key" icon="key">
+    A license key that activates the API server. The server will not start without a valid key.
+  </Card>
+  <Card title="Data sovereignty" icon="shield">
+    No events, traces, or AI results ever leave your infrastructure. Ideal for regulated industries and data-sensitive environments.
+  </Card>
+  <Card title="Dedicated support" icon="headset">
+    A shared Slack channel with the LumiqTrace engineering team for deployment help, upgrades, and escalations.
+  </Card>
+</CardGroup>
+
+## Infrastructure requirements
+
+You are responsible for providing and managing the following infrastructure:
+
+| Service | Minimum spec | Purpose |
+|---------|-------------|---------|
+| PostgreSQL 15+ | 2 vCPU, 4 GB RAM | Organizations, projects, alerts, prompts, billing |
+| ClickHouse 24+ | 4 vCPU, 8 GB RAM | LLM event storage and analytics |
+| Redis 7+ | 1 vCPU, 2 GB RAM | Sessions, API key cache, job queues |
+| Container runtime | Docker or Kubernetes | Running the API and web app images |
+
+For production deployments, use managed services (AWS RDS, ClickHouse Cloud, Upstash Redis) rather than self-managed databases to avoid operational overhead.
+
+## Deployment overview
+
+<Steps>
+  <Step title="Request your Enterprise license">
+    Contact [enterprise@lumiqtrace.com](mailto:enterprise@lumiqtrace.com) with your organization name and expected event volume. You will receive:
+
+    - A `LICENSE_KEY` for activating the API server
+    - Docker registry credentials (username + password) for pulling images
+    - A private Docker registry URL
+  </Step>
+
+  <Step title="Authenticate with the Docker registry">
+    Log in to the LumiqTrace private Docker registry using the credentials provided:
+
+    ```bash
+    docker login registry.lumiqtrace.com \
+      --username your-registry-username \
+      --password your-registry-password
+    ```
+  </Step>
+
+  <Step title="Pull the Docker images">
+    Pull the API server and web app images:
+
+    ```bash
+    # API server
+    docker pull registry.lumiqtrace.com/lumiqtrace/api:latest
+
+    # Web app
+    docker pull registry.lumiqtrace.com/lumiqtrace/web:latest
+    ```
+
+    Replace `latest` with a specific version tag for pinned deployments (recommended for production). Version tags follow semantic versioning: `1.4.2`.
+  </Step>
+
+  <Step title="Configure environment variables">
+    Create an environment file with your infrastructure connection strings, license key, and other required settings. See the [environment variables reference](/platform/environment-variables) for the full list.
+
+    Critical variables for self-hosting:
+
+    ```bash
+    # License
+    LICENSE_KEY="lqt_lic_your_enterprise_license_key"
+
+    # Databases
+    DATABASE_URL="postgresql://user:password@your-pg-host:5432/lumiqtrace"
+    CLICKHOUSE_HOST="https://your-clickhouse-host:8443"
+    CLICKHOUSE_USER="default"
+    CLICKHOUSE_PASSWORD="your-clickhouse-password"
+    CLICKHOUSE_DB="lumiqtrace"
+    REDIS_URL="redis://your-redis-host:6379"
+
+    # Auth
+    BETTER_AUTH_SECRET="a-random-secret-minimum-32-characters"
+    BETTER_AUTH_URL="https://api.yourdomain.com"
+    CORS_ORIGIN="https://app.yourdomain.com"
+
+    # AI providers (for LumiqPilot and AI features)
+    ANTHROPIC_API_KEY="sk-ant-..."
+    GOOGLE_GENERATIVE_AI_API_KEY="AIza..."
+
+    # Email
+    RESEND_API_KEY="re_..."
+    ```
+  </Step>
+
+  <Step title="Run database migrations">
+    The API container includes a migration runner. Execute migrations before starting the main server for the first time and after each upgrade:
+
+    ```bash
+    # PostgreSQL schema
+    docker run --rm \
+      --env-file .env \
+      registry.lumiqtrace.com/lumiqtrace/api:latest \
+      pnpm db:push
+
+    # ClickHouse schema
+    docker run --rm \
+      --env-file .env \
+      registry.lumiqtrace.com/lumiqtrace/api:latest \
+      pnpm ch:migrate
+    ```
+  </Step>
+
+  <Step title="Start the services">
+    Use the provided `docker-compose.yml` template as a starting point, or adapt it for your orchestration platform (Kubernetes, ECS, etc.):
+
+    ```yaml
+    services:
+      api:
+        image: registry.lumiqtrace.com/lumiqtrace/api:latest
+        env_file: .env
+        ports:
+          - "3001:3001"
+        restart: unless-stopped
+
+      worker:
+        image: registry.lumiqtrace.com/lumiqtrace/api:latest
+        command: pnpm dev:worker
+        env_file: .env
+        restart: unless-stopped
+
+      web:
+        image: registry.lumiqtrace.com/lumiqtrace/web:latest
+        env_file: .env.web
+        ports:
+          - "3000:3000"
+        restart: unless-stopped
+    ```
+
+    ```bash
+    docker compose up -d
+    ```
+  </Step>
+</Steps>
+
+## Pointing the SDK at your self-hosted instance
+
+When using the LumiqTrace SDK against your self-hosted deployment, set `baseURL` to your API server's URL:
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    import { lumiqtrace } from "@lumiqtrace/sdk";
+
+    lumiqtrace.init({
+      apiKey: "lqt_your_project_api_key",
+      baseURL: "https://api.yourdomain.com",
+    });
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    import lumiqtrace
+
+    lumiqtrace.init(
+        api_key="lqt_your_project_api_key",
+        base_url="https://api.yourdomain.com",
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## Upgrading
+
+New Docker image versions are published with each LumiqTrace release. To upgrade:
+
+```bash
+# Pull new images
+docker pull registry.lumiqtrace.com/lumiqtrace/api:1.x.y
+docker pull registry.lumiqtrace.com/lumiqtrace/web:1.x.y
+
+# Run migrations before restarting services
+docker run --rm --env-file .env \
+  registry.lumiqtrace.com/lumiqtrace/api:1.x.y pnpm db:push
+
+docker run --rm --env-file .env \
+  registry.lumiqtrace.com/lumiqtrace/api:1.x.y pnpm ch:migrate
+
+# Restart with new images
+docker compose up -d
+```
+
+<Warning>
+  Always run database migrations before restarting the new API version. Starting the new container without migrating first may cause startup errors if the schema has changed.
+</Warning>
+
+## License validation
+
+The API server validates your `LICENSE_KEY` on startup and rechecks it every 24 hours against the LumiqTrace license service. The check is a lightweight HTTP request — it does not transmit any of your trace data. If your deployment loses internet access or the license expires, the server enters a grace period of 7 days before shutting down. Contact [enterprise@lumiqtrace.com](mailto:enterprise@lumiqtrace.com) to renew or if you need an air-gapped license for fully offline deployments.
+
+## Support
+
+Enterprise customers have access to:
+
+- A dedicated Slack channel with the LumiqTrace engineering team
+- SLA-backed response times (4 hours for P1 issues)
+- Upgrade assistance and migration guides
+
+Reach us at [enterprise@lumiqtrace.com](mailto:enterprise@lumiqtrace.com) or through your shared Slack channel.

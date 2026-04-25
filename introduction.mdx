@@ -1,44 +1,59 @@
 ---
-title: "LumiqTrace: LLM Observability for AI Builders"
-description: "LumiqTrace is an LLM observability platform for AI applications. Instrument in two lines, then monitor traces, costs, errors, and anomalies in one dashboard."
+title: "LumiqTrace: Agent Observability for AI Teams"
+description: "LumiqTrace is an agent observability platform. Trace every agent run, tool call, LLM interaction, and delegation across your entire AI system — in two lines of code."
 ---
 
-LumiqTrace is an LLM observability platform built for developers shipping AI applications. Every time your code calls an LLM — whether it's a single chat completion or a complex multi-step agent workflow — LumiqTrace captures the full picture: latency, token usage, cost, errors, and more. The tagline says it simply: illuminate every LLM call.
+LumiqTrace is an **agent observability platform** built for teams shipping AI applications powered by agents. Whether you're running a single-step RAG pipeline, a multi-agent coordinator with specialists, or a complex agentic workflow with tool use and handoffs — LumiqTrace captures the complete picture of what your agents are doing at runtime: which tools they called, which models they used, how much it cost, how long each step took, and where things went wrong.
 
-## What you can do with LumiqTrace
+<Frame>
+  <img src="/images/dashboard.png" alt="LumiqTrace dashboard showing agent traces, cost breakdown, and real-time KPIs" />
+</Frame>
+
+## What you can observe
 
 <CardGroup cols={2}>
-  <Card title="Distributed tracing" icon="git-branch">
-    Follow a user request across every LLM call it touches. The flame graph view shows each span's latency, cost, and status so you can pinpoint exactly where time and money are spent.
+  <Card title="Full agent traces" icon="git-branch">
+    Follow a user request across every agent turn, tool invocation, sub-agent delegation, and LLM call. The flame graph shows each span's latency, cost, and status so you can see exactly where time and money are spent.
   </Card>
-  <Card title="Cost tracking" icon="dollar-sign">
-    See your LLM spend broken down by model, user, environment, and time period. Cached token discounts are computed automatically using per-model pricing.
+  <Card title="Multi-agent visibility" icon="bot">
+    See coordinator-to-specialist handoffs, parallel agent runs, and agent delegation chains rendered as a hierarchy. The agent registry maps every agent in your system and the tools they use.
   </Card>
-  <Card title="Performance monitoring" icon="gauge">
-    Track P50, P90, and P99 latency alongside time-to-first-token (TTFT) for streaming calls. Spot slow models and regressions before your users do.
+  <Card title="Tool and retriever tracing" icon="wrench">
+    Every tool call your agent makes — web search, database lookup, code execution, vector retrieval — is captured as a linked span with arguments, return values, and latency.
+  </Card>
+  <Card title="Cost attribution" icon="dollar-sign">
+    Token costs attributed per agent, per tool, per model, per user, and per session. Know exactly which agent is driving your bill and what its per-run cost is.
   </Card>
   <Card title="Anomaly detection" icon="triangle-alert">
-    A background job scans your metrics every 15 minutes and surfaces statistically significant deviations — cost spikes, latency jumps, error surges — with plain-English explanations.
+    Background jobs scan your agent metrics every 15 minutes and surface statistically significant deviations — cost spikes, latency regressions, error surges, or agents looping unexpectedly.
   </Card>
-  <Card title="AI-powered insights" icon="sparkles">
-    The Cost Optimizer analyses your 30-day spend and returns ranked, actionable recommendations with estimated monthly savings. Ask your data questions in natural language with NL Query.
-  </Card>
-  <Card title="Root cause analysis" icon="search">
-    For any failed or slow trace, request an AI-generated root cause report that explains what went wrong and how to prevent it.
+  <Card title="AI-powered analysis" icon="sparkles">
+    Ask questions about your agent data in plain English. Get AI-generated root cause analysis when an agent fails. Receive ranked cost optimization recommendations based on your actual usage patterns.
   </Card>
 </CardGroup>
 
 ## Who LumiqTrace is for
 
-LumiqTrace is designed for developers and engineering teams who are building products on top of LLMs. If you're calling OpenAI, Anthropic, or Google from your backend — or orchestrating multi-step agents — you need visibility into what's happening at runtime. LumiqTrace gives you that without requiring you to instrument every call by hand. A two-line SDK setup is all it takes.
+LumiqTrace is built for engineers and teams building production AI applications with agents. If your application makes LLM calls, uses tools, orchestrates multiple agents, or runs RAG pipelines — you need visibility into what's happening at runtime. Without observability, debugging agent failures means guessing which step in a multi-step workflow went wrong. LumiqTrace gives you the full picture with two lines of SDK setup.
+
+You don't need to change how you build your agents. Wrap your existing LLM clients and frameworks, and LumiqTrace instruments everything automatically — including LangChain chains, Google ADK agents, and custom multi-agent systems.
+
+## How it works
+
+```
+Your agents (SDK)  →  POST /v1/ingest  →  Queue  →  ClickHouse  →  Dashboard
+                      (gzip NDJSON)        (async)    (analytics)
+```
+
+The SDK wraps your agent frameworks and LLM clients. Events are batched and sent to the ingest endpoint asynchronously — adding zero latency to your agent runs. Spans are stored in ClickHouse for fast analytics and appear in the dashboard within seconds.
 
 ## Pricing tiers
 
-LumiqTrace charges per organization. You can start on the Free tier with no credit card required, then upgrade as your usage grows.
+LumiqTrace charges per organization. Start on the Free tier with no credit card required.
 
 <Tabs>
   <Tab title="Free">
-    The Free tier is designed for individual developers exploring LumiqTrace or building early prototypes.
+    For individual developers exploring LumiqTrace or building early prototypes.
 
     | | |
     |---|---|
@@ -46,17 +61,18 @@ LumiqTrace charges per organization. You can start on the Free tier with no cred
     | **Data retention** | 7 days |
     | **Projects** | 1 |
     | **Team members** | 1 (owner only) |
-    | **Tracing & requests log** | Included |
+    | **Agent tracing** | Included |
+    | **Multi-agent traces** | Included |
     | **Cost Optimizer** | Not included |
-    | **Anomaly Detection** | Not included |
+    | **Anomaly detection** | Not included |
     | **Alerts** | Not included |
 
     <Note>
-      The Free tier is capped at 10K events per month with no overage option. Upgrade to Pro when you need more headroom.
+      Free tier events are capped at 10K per month with no overage option. Upgrade to Pro when you need more headroom.
     </Note>
   </Tab>
   <Tab title="Pro — $29/mo">
-    Pro is for solo developers and small teams running LLM features in production.
+    For solo developers running agent features in production.
 
     | | |
     |---|---|
@@ -65,13 +81,12 @@ LumiqTrace charges per organization. You can start on the Free tier with no cred
     | **Projects** | 3 |
     | **Team members** | 1 |
     | **Cost Optimizer** | Weekly reports |
-    | **Root Cause Analysis** | 10 traces/mo |
+    | **Root cause analysis** | 10 traces/mo |
     | **Alerts** | Up to 5 rules |
     | **Overage** | $0.50 per 10K events |
-
   </Tab>
   <Tab title="Team — $99/mo">
-    Team adds collaboration, AI features, and the capacity for larger applications.
+    For teams running agents at scale with collaboration requirements.
 
     | | |
     |---|---|
@@ -80,16 +95,17 @@ LumiqTrace charges per organization. You can start on the Free tier with no cred
     | **Projects** | Unlimited |
     | **Team members** | Up to 10 |
     | **Cost Optimizer** | Daily reports |
-    | **Anomaly Detection** | Included |
+    | **Anomaly detection** | Included |
+    | **Evaluations** | Included |
+    | **LumiqPilot copilot** | Included |
     | **NL Query** | 50 queries/mo |
-    | **Root Cause Analysis** | 50 traces/mo |
+    | **Root cause analysis** | 50 traces/mo |
     | **Alerts** | Unlimited rules |
     | **Data export** | CSV |
     | **Overage** | $0.50 per 10K events |
-
   </Tab>
   <Tab title="Scale — $299/mo">
-    Scale is for organizations with high event volumes, large teams, and advanced security requirements.
+    For organizations with high event volumes and advanced security requirements.
 
     | | |
     |---|---|
@@ -98,21 +114,22 @@ LumiqTrace charges per organization. You can start on the Free tier with no cred
     | **Projects** | Unlimited |
     | **Team members** | Unlimited |
     | **Cost Optimizer** | Real-time |
-    | **Anomaly Detection** | Included |
+    | **Anomaly detection** | Included |
+    | **LumiqPilot copilot** | Included |
     | **NL Query** | Unlimited |
-    | **Root Cause Analysis** | Unlimited |
+    | **Root cause analysis** | Unlimited |
     | **Alerts** | Unlimited + webhooks |
+    | **Incident auto-remediation** | Included |
     | **Data export** | CSV + API |
     | **SSO / SAML** | Coming soon |
     | **Overage** | $0.30 per 10K events |
-
   </Tab>
 </Tabs>
 
 ## Ready to start?
 
-Get your first trace into the dashboard in under five minutes.
+Instrument your first agent and see it in the dashboard in under five minutes.
 
 <Card title="Quickstart" icon="rocket" href="/quickstart">
-  Install the SDK, wrap your OpenAI client, and see your first trace appear in the dashboard.
+  Install the SDK, wrap your agent or LLM client, and see your first trace appear in the dashboard.
 </Card>

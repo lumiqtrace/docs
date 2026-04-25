@@ -1,0 +1,270 @@
+---
+title: "Google ADK integration"
+sidebarTitle: "Google ADK"
+description: "Trace Google Agent Development Kit (ADK) agents and multi-agent systems using instrumentADK, wrapADKRunner, and wrapADKAgent in TypeScript and Python."
+---
+
+LumiqTrace provides first-class tracing for Google's Agent Development Kit (ADK). Every model call, tool invocation, and agent-to-agent delegation in your ADK workflow is captured as a linked span — without modifying your agent definitions.
+
+## TypeScript
+
+### Installation
+
+```bash
+npm install @lumiqtrace/sdk @google/adk
+```
+
+### Three integration patterns
+
+Choose the integration pattern that fits your setup:
+
+| Pattern | Use when |
+|---------|----------|
+| `instrumentADK` | Production apps — wraps agent + runner in one call |
+| `wrapADKRunner` | You manage the runner lifecycle separately |
+| `wrapADKAgent` | Tests and scripts — direct agent wrapping |
+
+---
+
+### `instrumentADK` — recommended for production
+
+`instrumentADK` wraps both your coordinator agent and its runner in a single call. Use this when building production ADK applications.
+
+```typescript
+import { lumiqtrace, instrumentADK } from "@lumiqtrace/sdk";
+import { Agent, InMemoryRunner } from "@google/adk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+// Your normal ADK setup
+const policyAgent = new Agent({
+  model: "gemini-2.5-flash",
+  name: "PolicyAgent",
+  instructions: "Check refund policies and eligibility.",
+});
+
+const orderAgent = new Agent({
+  model: "gemini-2.5-flash",
+  name: "OrderAgent",
+  instructions: "Look up order details by order ID.",
+});
+
+const coordinator = new Agent({
+  model: "gemini-2.5-pro",
+  name: "SupportCoordinator",
+  subAgents: [policyAgent, orderAgent],
+  instructions: "Route customer requests to the right specialist.",
+});
+
+const runner = new InMemoryRunner({ agent: coordinator });
+
+// Wrap both at once — returns instrumented versions
+const { coordinator: tracedCoordinator, runner: tracedRunner } = instrumentADK({
+  coordinator,
+  runner,
+  agentName: "SupportCoordinator",
+  agentRole: "coordinator",
+  sessionId: req.sessionId,
+});
+
+// Use tracedRunner exactly as you would the original runner
+for await (const event of tracedRunner.runEphemeral({ userId: "u1", newMessage })) {
+  // handle ADK events
+}
+```
+
+---
+
+### `wrapADKRunner` — runner-level wrapping
+
+Wraps `InMemoryRunner.runEphemeral()` and `Runner.run()` by intercepting the ADK event stream. Emits one span per agent author turn, one span per tool call, and handoff spans on delegation.
+
+```typescript
+import { lumiqtrace, wrapADKRunner } from "@lumiqtrace/sdk";
+import { InMemoryRunner } from "@google/adk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+const runner = wrapADKRunner(
+  new InMemoryRunner({ agent: coordinator }),
+  {
+    agentName: "SupportCoordinator",
+    agentRole: "coordinator",
+    model: "gemini-2.5-pro",
+    sessionId: req.session.id,
+  }
+);
+
+for await (const event of runner.runEphemeral({ userId: "u1", newMessage })) {
+  if (event.content) {
+    console.log(event.content.parts[0].text);
+  }
+}
+```
+
+**`wrapADKRunner` options:**
+
+<ParamField body="agentName" type="string" required>
+  Display name for the root agent span in LumiqTrace.
+</ParamField>
+
+<ParamField body="agentRole" type="string" default="coordinator">
+  Role hint for the agent registry. Use `"coordinator"` for orchestrators and `"specialist"` for sub-agents.
+</ParamField>
+
+<ParamField body="model" type="string">
+  The model name used by the root agent. Shown in the trace detail panel.
+</ParamField>
+
+<ParamField body="sessionId" type="string">
+  Associates all spans from this run with a session in the Sessions view.
+</ParamField>
+
+---
+
+### `wrapADKAgent` — agent-level wrapping
+
+Wraps `agent.run()` directly. Best for unit tests and simple scripts. Recursively wraps `subAgents` by default.
+
+```typescript
+import { lumiqtrace, wrapADKAgent } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+const tracedAgent = wrapADKAgent(coordinator, {
+  agentName: "SupportCoordinator",
+  agentRole: "coordinator",
+  traceSubAgents: true, // wrap all subAgents recursively
+});
+
+const result = await tracedAgent.run({ input: "I need a refund for order #123" });
+```
+
+---
+
+### What gets captured
+
+All three wrappers capture the same data from the ADK event stream:
+
+| ADK event | LumiqTrace span |
+|-----------|----------------|
+| Agent turn start/end | `span_kind: "agent"` with latency, model, token counts |
+| Tool call | `span_kind: "tool"` with tool name, args, result |
+| Sub-agent delegation | `span_kind: "handoff"` with target agent name |
+| Model response | Token counts (including cached + reasoning tokens), finish reason |
+
+---
+
+## Python
+
+### Installation
+
+```bash
+pip install lumiqtrace google-adk
+```
+
+### Basic usage
+
+Pass your ADK agent to `LumiqtraceADKTracer` after creating it. The tracer attaches `before_model_call` and `after_model_call` hooks to capture every model call, tool invocation, and agent session as hierarchical spans.
+
+```python
+import lumiqtrace
+from google.adk import Agent
+from lumiqtrace.integrations.google_adk import LumiqtraceADKTracer
+
+lumiqtrace.init(api_key="lqt_your_api_key_here")
+
+def lookup_order(order_id: str) -> dict:
+    """Look up an order by ID."""
+    return {"id": order_id, "status": "delivered", "total": 49.99}
+
+agent = Agent(
+    model="gemini-2.5-pro",
+    tools=[lookup_order],
+    instructions="Help customers with order questions.",
+)
+
+# Attach the tracer — all subsequent runs are instrumented
+LumiqtraceADKTracer(agent)
+
+response = await agent.run("What is the status of order #ORD-123?")
+print(response.text)
+```
+
+### Multi-agent systems
+
+```python
+from google.adk import Agent
+from lumiqtrace.integrations.google_adk import LumiqtraceADKTracer
+
+# Sub-agents
+policy_agent = Agent(model="gemini-2.5-flash", name="PolicyAgent")
+order_agent = Agent(model="gemini-2.5-flash", name="OrderAgent")
+
+# Coordinator
+coordinator = Agent(
+    model="gemini-2.5-pro",
+    name="SupportCoordinator",
+    sub_agents=[policy_agent, order_agent],
+)
+
+# Attach tracer to the coordinator — sub-agents are traced automatically
+LumiqtraceADKTracer(coordinator, trace_sub_agents=True)
+
+response = await coordinator.run("I want to return my order from last week.")
+```
+
+<Note>
+  `LumiqtraceADKTracer` hooks into the agent at attach time. Create the agent first, then attach the tracer — don't attach before the agent is fully configured.
+</Note>
+
+---
+
+## How multi-agent traces look in the dashboard
+
+A coordinator + specialist ADK run produces a trace like this:
+
+```
+SupportCoordinator (agent)        ──────────────────────────────── 3.2s
+  ├── gemini-2.5-pro (llm)        ──────────── 1.1s
+  │     → tool_calls: [OrderAgent.run]
+  ├── OrderAgent → handoff        ─ 4ms
+  ├── OrderAgent (agent)          ────────────────── 1.8s
+  │   ├── gemini-2.5-flash (llm)  ─────── 820ms
+  │   └── lookup_order (tool)     ── 12ms
+  └── gemini-2.5-pro (llm)        ──── 280ms  finish_reason: stop
+```
+
+Each agent's total token cost is shown separately in the agent registry view, which also maps the coordinator-specialist hierarchy visually.
+
+<Frame>
+  <img src="/images/agent-visualization.png" alt="Multi-agent trace visualization in LumiqTrace showing coordinator and specialist agent spans" />
+</Frame>
+
+---
+
+## Session and user context
+
+To associate ADK traces with a user session for the Sessions dashboard view, set `sessionId` and `userId` in the wrapper options (TypeScript) or via `with_lumiqtrace_context` (Python):
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    const { runner: tracedRunner } = instrumentADK({
+      coordinator,
+      runner,
+      agentName: "SupportCoordinator",
+      sessionId: req.session.id, // links to Sessions view
+    });
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    from lumiqtrace import with_lumiqtrace_context
+
+    async def handle_request(user_id: str, session_id: str, message: str):
+        with with_lumiqtrace_context(user_id=user_id, session_id=session_id):
+            return await agent.run(message)
+    ```
+  </Tab>
+</Tabs>

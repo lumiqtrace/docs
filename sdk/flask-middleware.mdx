@@ -1,0 +1,232 @@
+---
+title: "Flask middleware — automatic HTTP request tracing"
+sidebarTitle: "Flask middleware"
+description: "Add LumiqFlaskMiddleware to your Flask app to automatically trace every HTTP request and instrument LLM calls with @observe_llm and @observe_span decorators."
+---
+
+The `lumiq-flask` package adds WSGI middleware to your Flask application that automatically creates a trace context for every incoming HTTP request. The `@observe_llm` and `@observe_span` decorators let you attach LLM call details and custom operation spans to that context without threading trace objects through your call stack.
+
+## Installation
+
+```bash
+pip install lumiq-flask
+```
+
+## Adding the middleware
+
+Import `LumiqFlaskMiddleware` and `LumiqConfig`, then wrap your Flask app with the middleware class.
+
+```python
+from flask import Flask
+from lumiq_flask import LumiqFlaskMiddleware, LumiqConfig
+
+app = Flask(__name__)
+
+config = LumiqConfig(api_key="lqt_your_api_key_here")
+app.wsgi_app = LumiqFlaskMiddleware(app.wsgi_app, config=config)
+```
+
+Once registered, every HTTP request to your app creates a trace context. The middleware records the HTTP method, path, response status code, and total request duration, then flushes all span data to LumiqTrace asynchronously.
+
+## `LumiqConfig` options
+
+<ParamField body="api_key" type="string" required>
+  Your LumiqTrace API key. Must start with `lqt_`. Find it in **Settings → API Keys**.
+</ParamField>
+
+<ParamField body="base_url" type="string" default="https://api.lumiqtrace.com">
+  Override the LumiqTrace API base URL. Use this only if you are self-hosting the ingest endpoint.
+</ParamField>
+
+<ParamField body="enabled" type="boolean" default="True">
+  When `False`, the middleware passes all requests through without tracing. Useful for disabling tracing in test environments.
+</ParamField>
+
+<ParamField body="sample_rate" type="float" default="1.0">
+  Fraction of requests to trace, from `0.0` to `1.0`. Set to `0.1` to trace 10% of requests in high-traffic environments.
+</ParamField>
+
+<ParamField body="capture_request_body" type="boolean" default="False">
+  When `True`, the request body is captured and attached to the trace. Enable only after reviewing your data retention policy.
+</ParamField>
+
+<ParamField body="capture_response_body" type="boolean" default="False">
+  When `True`, the response body is captured and attached to the trace.
+</ParamField>
+
+<ParamField body="redact_fields" type="list[str]" default='["password", "token", "api_key"]'>
+  Field names whose values are redacted before storage. Applied regardless of `capture_request_body`.
+</ParamField>
+
+<ParamField body="debug" type="boolean" default="False">
+  When `True`, logs flush errors to stdout. Enable during integration testing.
+</ParamField>
+
+## Tracing LLM calls with `@observe_llm`
+
+Use the `@observe_llm` decorator on any function that makes an LLM call. The decorator captures model name, provider, duration, and token usage (extracted automatically if the response has a `.usage` attribute).
+
+```python
+from flask import Flask, request, jsonify
+from lumiq_flask import LumiqFlaskMiddleware, LumiqConfig, observe_llm
+import openai
+
+app = Flask(__name__)
+app.wsgi_app = LumiqFlaskMiddleware(
+    app.wsgi_app,
+    config=LumiqConfig(api_key="lqt_your_api_key_here"),
+)
+
+client = openai.OpenAI()
+
+@observe_llm(model="gpt-4o", provider="openai")
+def generate_summary(text: str) -> str:
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "Summarize the following text concisely."},
+            {"role": "user", "content": text},
+        ],
+    )
+    return response.choices[0].message.content
+
+@app.post("/summarize")
+def summarize_endpoint():
+    body = request.get_json()
+    summary = generate_summary(body["text"])
+    return jsonify({"summary": summary})
+```
+
+`@observe_llm` parameters:
+
+<ParamField body="model" type="string">
+  Model identifier to record on the span, e.g. `"gpt-4o"` or `"claude-sonnet-4-6"`.
+</ParamField>
+
+<ParamField body="provider" type="string">
+  Provider name, e.g. `"openai"` or `"anthropic"`.
+</ParamField>
+
+## Tracing custom operations with `@observe_span`
+
+Use `@observe_span` to instrument any function as a named span within the current request's trace context.
+
+```python
+from lumiq_flask import observe_span
+
+@observe_span("document-retrieval", span_type="retriever")
+def retrieve_documents(query: str) -> list:
+    # Vector store search
+    results = vector_store.search(query, top_k=5)
+    return [doc.content for doc in results]
+
+@observe_span("rag-pipeline", span_type="custom")
+def run_rag(query: str) -> str:
+    docs = retrieve_documents(query)
+    summary = generate_summary("\n\n".join(docs))
+    return summary
+```
+
+<ParamField body="name" type="string" required>
+  The span name. Appears as the operation label in the trace flame graph.
+</ParamField>
+
+<ParamField body="span_type" type="string" default="custom">
+  A hint for the span type. Common values: `"llm"`, `"retriever"`, `"custom"`.
+</ParamField>
+
+## Setting custom attributes
+
+Use `set_attribute` to attach arbitrary key-value data to the current request's trace context from anywhere in your handler.
+
+```python
+from lumiq_flask import set_attribute
+
+@app.post("/chat")
+def chat_endpoint():
+    body = request.get_json()
+    set_attribute("user.id", body.get("user_id", "anonymous"))
+    set_attribute("feature", "chat")
+
+    response = run_rag(body["message"])
+    return jsonify({"response": response})
+```
+
+## Getting the current trace ID
+
+Use `get_current_trace_id()` to retrieve the trace ID for the active request. Useful for correlating LumiqTrace data with your own logging stack.
+
+```python
+from lumiq_flask import get_current_trace_id
+import logging
+
+logger = logging.getLogger(__name__)
+
+@app.post("/generate")
+def generate_endpoint():
+    trace_id = get_current_trace_id()
+    logger.info("Handling request", extra={"lumiqtrace_id": trace_id})
+
+    result = generate_summary(request.get_json()["text"])
+    return jsonify({"result": result, "trace_id": trace_id})
+```
+
+## Complete example
+
+```python
+from flask import Flask, request, jsonify
+from lumiq_flask import (
+    LumiqFlaskMiddleware,
+    LumiqConfig,
+    observe_llm,
+    observe_span,
+    set_attribute,
+)
+import openai
+
+app = Flask(__name__)
+app.wsgi_app = LumiqFlaskMiddleware(
+    app.wsgi_app,
+    config=LumiqConfig(
+        api_key="lqt_your_api_key_here",
+        sample_rate=1.0,
+    ),
+)
+
+openai_client = openai.OpenAI()
+
+@observe_span("vector-search", span_type="retriever")
+def search_docs(query: str) -> list:
+    return ["Relevant document 1", "Relevant document 2"]
+
+@observe_llm(model="gpt-4o", provider="openai")
+def answer_question(question: str, context: str) -> str:
+    response = openai_client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": f"Answer using this context:\n{context}"},
+            {"role": "user", "content": question},
+        ],
+    )
+    return response.choices[0].message.content
+
+@app.post("/ask")
+def ask_endpoint():
+    body = request.get_json()
+    set_attribute("user.id", body.get("user_id", "anonymous"))
+
+    docs = search_docs(body["question"])
+    answer = answer_question(body["question"], "\n".join(docs))
+    return jsonify({"answer": answer})
+
+if __name__ == "__main__":
+    app.run(debug=True)
+```
+
+<Warning>
+  The middleware flushes traces synchronously at request end in WSGI mode. For high-traffic applications, consider running with a WSGI server (Gunicorn, uWSGI) that handles request concurrency to prevent trace flushing from blocking response delivery.
+</Warning>
+
+<Note>
+  For async Flask applications (using `flask[async]`), the `@observe_llm` and `@observe_span` decorators support both sync and async functions transparently.
+</Note>

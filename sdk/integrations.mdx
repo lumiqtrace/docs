@@ -1,10 +1,20 @@
 ---
-title: "Framework integrations — LangChain and Google ADK"
-sidebarTitle: "Integrations"
-description: "Integrate LumiqTrace with LangChain and Google ADK using callback handlers and wrapper functions, with full support for tools, chains, and multi-agent systems."
+title: "OpenTelemetry SDK integration"
+sidebarTitle: "OpenTelemetry"
+description: "Enable the OTel exporter in the LumiqTrace SDK to simultaneously send spans to LumiqTrace and any OpenTelemetry-compatible backend like Jaeger, Honeycomb, or Grafana Tempo."
 ---
 
-LumiqTrace provides native integrations for LangChain and Google ADK. These integrations hook into each framework's lifecycle to automatically trace LLM calls, tool invocations, chains, retrievers, and agent-to-agent handoffs — with no changes to your chain or agent logic.
+<Note>
+  Looking for LangChain or Google ADK integration? See the dedicated pages:
+  - [LangChain integration](/sdk/langchain)
+  - [Google ADK integration](/sdk/google-adk)
+</Note>
+
+LumiqTrace can send spans to an OpenTelemetry-compatible backend alongside its native ingest. Use this when you already have an OTel pipeline (Jaeger, Honeycomb, Grafana Tempo, Datadog) and want LumiqTrace data to appear there too — both exporters run simultaneously.
+
+## Enabling OTel export in the SDK
+
+Pass `enableOTel: true` to `lumiqtrace.init()`. This activates the OTel exporter **in addition** to the native LumiqTrace ingest — you do not choose one or the other, both run at the same time.
 
 ## LangChain
 

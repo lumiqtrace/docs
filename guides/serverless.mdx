@@ -1,0 +1,274 @@
+---
+title: "Serverless deployment guide"
+sidebarTitle: "Serverless"
+description: "Ensure LumiqTrace events are reliably sent from AWS Lambda, Vercel Functions, Netlify Functions, and Google Cloud Run by handling flush correctly in each environment."
+---
+
+Short-lived serverless functions are the most common cause of missing traces. The SDK batches events and flushes them asynchronously on a timer — but if the process exits before that timer fires, buffered events are silently discarded. This guide shows the correct pattern for each major serverless platform.
+
+<Warning>
+  **Never** skip calling `flush()` in serverless environments. The atexit/beforeExit handlers registered by the SDK are not reliably called when a Lambda or Vercel Function freezes.
+</Warning>
+
+## The pattern
+
+In every serverless handler, call `flush()` as the last operation before returning — after all LLM calls are complete, after your response is ready, before you return.
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    import { lumiqtrace } from "@lumiqtrace/sdk";
+
+    // Initialize once — outside the handler, at module level
+    lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+    const openai = lumiqtrace.wrapOpenAI(new OpenAI());
+
+    export async function handler(event: any) {
+      const result = await openai.chat.completions.create({ ... });
+
+      // Always flush before returning
+      await lumiqtrace.getClient().flush();
+
+      return { statusCode: 200, body: result.choices[0].message.content };
+    }
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    import lumiqtrace
+    import openai
+
+    # Initialize once — at module level, outside handler
+    lumiqtrace.init(api_key="lqt_your_api_key_here")
+    lumiqtrace.patch_openai()
+
+    client = openai.OpenAI()
+
+    def handler(event, context):
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": event["prompt"]}],
+        )
+        result = response.choices[0].message.content
+
+        # Always flush before returning
+        lumiqtrace.flush()
+
+        return {"statusCode": 200, "body": result}
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  Initialize the SDK **once at module level**, not inside the handler function. Module-level initialization persists across warm invocations of the same container, so you avoid the overhead of re-initializing on every request.
+</Note>
+
+---
+
+## AWS Lambda
+
+```typescript
+import { lumiqtrace } from "@lumiqtrace/sdk";
+import OpenAI from "openai";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+const openai = lumiqtrace.wrapOpenAI(new OpenAI());
+
+export const handler = async (event: AWSLambda.APIGatewayEvent) => {
+  const body = JSON.parse(event.body ?? "{}");
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [{ role: "user", content: body.message }],
+  });
+
+  const answer = response.choices[0].message.content;
+
+  // Flush before Lambda freezes the container
+  await lumiqtrace.getClient().flush();
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ answer }),
+  };
+};
+```
+
+**Lambda-specific notes:**
+- Set a Lambda timeout of at least `init timeout + max LLM latency + 2 seconds` to give the flush time to complete
+- The SDK flush is a single HTTP request — it typically completes in under 500ms
+- On cold starts, the SDK initializes at module load time. This adds ~10ms and happens only once per container lifecycle
+
+---
+
+## Vercel Functions (App Router)
+
+```typescript
+// app/api/chat/route.ts
+import { lumiqtrace, withLumiqtraceContext } from "@lumiqtrace/sdk";
+import OpenAI from "openai";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+const openai = lumiqtrace.wrapOpenAI(new OpenAI());
+
+export async function POST(req: Request) {
+  const { message, userId } = await req.json();
+
+  let answer: string;
+
+  await withLumiqtraceContext({ userId }, async () => {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: message }],
+    });
+    answer = response.choices[0].message.content ?? "";
+  });
+
+  // Flush before Vercel freezes the function
+  await lumiqtrace.getClient().flush();
+
+  return Response.json({ answer: answer! });
+}
+```
+
+**Vercel-specific notes:**
+- Set `maxDuration` in your `vercel.json` or route config to account for flush time
+- Vercel Edge Runtime does not support `AsyncLocalStorage` — use the Node.js runtime (`export const runtime = "nodejs"`) for full trace context propagation
+- For streaming responses, flush after the stream is complete — the SDK captures TTFT and full token counts at stream close
+
+---
+
+## Vercel Functions — streaming responses
+
+When streaming, the flush must happen after the stream fully closes:
+
+```typescript
+export async function POST(req: Request) {
+  const { message } = await req.json();
+
+  const stream = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [{ role: "user", content: message }],
+    stream: true,
+  });
+
+  const encoder = new TextEncoder();
+
+  const readableStream = new ReadableStream({
+    async start(controller) {
+      for await (const chunk of stream) {
+        const text = chunk.choices[0]?.delta?.content ?? "";
+        controller.enqueue(encoder.encode(text));
+      }
+      controller.close();
+
+      // Flush AFTER stream is fully consumed
+      await lumiqtrace.getClient().flush();
+    },
+  });
+
+  return new Response(readableStream, {
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  });
+}
+```
+
+---
+
+## Netlify Functions
+
+```typescript
+import { Handler } from "@netlify/functions";
+import { lumiqtrace } from "@lumiqtrace/sdk";
+import OpenAI from "openai";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+const openai = lumiqtrace.wrapOpenAI(new OpenAI());
+
+export const handler: Handler = async (event) => {
+  const { message } = JSON.parse(event.body ?? "{}");
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [{ role: "user", content: message }],
+  });
+
+  await lumiqtrace.getClient().flush();
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ answer: response.choices[0].message.content }),
+  };
+};
+```
+
+---
+
+## Google Cloud Run (Python)
+
+Cloud Run containers can be reused across requests, making it safe to initialize at module level and flush per-request:
+
+```python
+import lumiqtrace
+import openai
+from flask import Flask, request, jsonify
+
+# Module-level initialization — persists across requests on the same instance
+lumiqtrace.init(api_key="lqt_your_api_key_here", environment="production")
+lumiqtrace.patch_openai()
+
+app = Flask(__name__)
+client = openai.OpenAI()
+
+@app.post("/chat")
+def chat():
+    body = request.get_json()
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": body["message"]}],
+    )
+    answer = response.choices[0].message.content
+
+    # Flush before Cloud Run scales the instance down
+    lumiqtrace.flush()
+
+    return jsonify({"answer": answer})
+```
+
+**Cloud Run notes:**
+- Cloud Run sends `SIGTERM` to the container before scaling it down. The SDK's `atexit` handler fires on clean shutdown, but do not rely on it alone — call `flush()` per-request for reliability.
+- For FastAPI on Cloud Run, use the [FastAPI middleware](/sdk/fastapi-middleware) instead of per-handler flush calls — the middleware handles flush automatically.
+
+---
+
+## Reducing flush latency
+
+If the flush adds too much latency to your handler response, consider these options:
+
+**Reduce batch size** so the flush completes faster (fewer events per HTTP request):
+```typescript
+lumiqtrace.init({ apiKey: "lqt_...", batchSize: 10 });
+```
+
+**Use a lower sample rate** so fewer events are buffered:
+```typescript
+lumiqtrace.init({ apiKey: "lqt_...", sampleRate: 0.5 }); // trace 50% of calls
+```
+
+**Background flush with `waitUntil`** (Vercel / Cloudflare Workers only):
+```typescript
+// Vercel — flush in background, don't block the response
+export async function POST(req: Request) {
+  const answer = await callLLM(req);
+  const response = Response.json({ answer });
+
+  // Schedule flush after response is sent
+  // (requires Vercel with waitUntil support)
+  const ctx = (globalThis as any).__vercel_ctx;
+  if (ctx?.waitUntil) {
+    ctx.waitUntil(lumiqtrace.getClient().flush());
+  }
+
+  return response;
+}
+```

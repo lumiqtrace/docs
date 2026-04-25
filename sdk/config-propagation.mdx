@@ -1,0 +1,132 @@
+---
+title: "SDK config propagation — update live applications without redeployment"
+sidebarTitle: "Config propagation"
+description: "Understand how LumiqPilot and the dashboard push SDK configuration changes to running applications in real time via the ingest response config version field."
+---
+
+SDK config propagation allows LumiqTrace to push configuration changes — model overrides, sample rate adjustments, guardrail toggles — to your running application without a code change or redeployment. The mechanism is built into the ingest response and adds no latency to your LLM calls.
+
+## How it works
+
+Every time your SDK flushes a batch of events to `POST /v1/ingest`, the response body includes a `cv` (config version) integer:
+
+```json
+{
+  "accepted": 12,
+  "cv": 7
+}
+```
+
+The SDK compares this `cv` value to the last version it fetched. If the server version is higher, the SDK makes a single background request to `GET /v1/sdk/config` and applies the returned configuration rules immediately — without blocking any LLM call in progress.
+
+```
+SDK flush → POST /v1/ingest → { accepted: N, cv: 7 }
+                                         ↓ cv > local_cv?
+                              GET /v1/sdk/config → new rules
+                                         ↓
+                              Apply rules to live client
+```
+
+The entire update cycle typically completes within one flush interval (default 2 seconds). From the perspective of your application code, nothing changes — all updates are applied transparently.
+
+## What can be propagated
+
+The following SDK behaviors can be updated at runtime via config propagation:
+
+| Rule type | Effect |
+|-----------|--------|
+| `model_override` | Redirect all calls for a given model to a different model |
+| `sample_rate` | Increase or decrease the fraction of events traced |
+| `guardrail_enable` | Enable or disable guardrails on a wrapper |
+| `pii_redact_keys` | Add keys to the redaction list |
+| `log_level` | Toggle debug logging |
+| `disable_tracing` | Stop all tracing immediately (circuit breaker) |
+
+Config rules are scoped to a project. Changes you make via LumiqPilot or the SDK Config panel apply to all instances of your application using that project's API key.
+
+## Updating config from LumiqPilot
+
+The most common way to push a config change is through [LumiqPilot](/dashboard/lumiqpilot), the AI copilot accessible via **⌘J** in the dashboard. You can ask it in plain English:
+
+- "Switch all GPT-4o calls to GPT-4o-mini"
+- "Set the sample rate to 20% for the production project"
+- "Disable tracing for the next hour"
+- "Enable guardrails on the support-agent project"
+
+LumiqPilot translates your instruction into a config rule, writes it to the database, and increments the `cv` counter. Within the next flush cycle, all running SDK instances pick up the change.
+
+<Warning>
+  Config changes that affect model routing or disable tracing entirely are considered high-risk operations. LumiqPilot requires confirmation before applying them. Only users with the **Admin** or **Owner** role can apply config changes — Members see a permission error.
+</Warning>
+
+## Updating config from the dashboard
+
+You can also manage SDK config rules directly from **Settings → SDK Config** in the dashboard:
+
+1. Click **New rule** to open the rule editor.
+2. Choose the rule type and fill in the parameters.
+3. Click **Apply** — the `cv` counter increments immediately.
+
+Active rules are listed in the panel with their current state. Toggle any rule off to remove it without deleting it; toggle it back on to re-apply.
+
+## Fetching config manually (advanced)
+
+The SDK exposes a method to force an immediate config refresh outside the normal flush cycle:
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    import { lumiqtrace } from "@lumiqtrace/sdk";
+
+    lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+    // Force a config refresh — useful during startup or after a deployment
+    await lumiqtrace.getClient().refreshConfig();
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    import lumiqtrace
+
+    lumiqtrace.init(api_key="lqt_your_api_key_here")
+
+    # Force a config refresh
+    lumiqtrace.get_client().refresh_config()
+    ```
+  </Tab>
+</Tabs>
+
+This makes a synchronous request to `GET /v1/sdk/config` and applies the returned rules before returning. Call it during application startup if you want to ensure the latest config is loaded before any LLM calls are made.
+
+## Disabling config propagation
+
+If you do not want the SDK to accept remote config changes — for example, in a high-security environment — set `disableConfigSync: true` at initialization:
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    lumiqtrace.init({
+      apiKey: process.env.LUMIQTRACE_API_KEY!,
+      disableConfigSync: true,
+    });
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    lumiqtrace.init(
+        api_key="lqt_your_api_key_here",
+        disable_config_sync=True,
+    )
+    ```
+  </Tab>
+</Tabs>
+
+With this flag set, the SDK ignores the `cv` field in ingest responses and never fetches remote config. All behavior is determined solely by the options passed to `init()`.
+
+## Audit trail
+
+Every config change — whether applied via LumiqPilot or the dashboard — is recorded in the audit log. Go to **Settings → Audit Log** to see who changed what, when, and from where. Each entry includes the rule type, the before and after values, and the user who made the change.
+
+<Tip>
+  Config propagation is most valuable for emergency interventions: switching a broken model to a fallback, dropping the sample rate during a cost spike, or disabling a guardrail that is blocking legitimate traffic. For planned changes, a code deployment is still preferable because it puts the change in version control.
+</Tip>

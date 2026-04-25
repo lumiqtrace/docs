@@ -1,0 +1,280 @@
+---
+title: "Troubleshooting"
+description: "Solutions to the most common problems when integrating LumiqTrace with your agents — from missing traces to cost calculation issues and broken span trees."
+---
+
+## Traces not appearing in the dashboard
+
+**Symptom:** You initialized the SDK and made LLM calls, but the dashboard shows no data after 15–30 seconds.
+
+<AccordionGroup>
+  <Accordion title="Wrong or missing API key">
+    Verify the API key you passed to `init()` starts with `lqt_` and matches the one shown in **Settings → API Keys** for your project. A typo or a key from a different project will cause all events to be silently dropped (the SDK logs a warning, but does not throw).
+
+    Enable `debug: true` to see SDK activity:
+
+    ```typescript
+    lumiqtrace.init({
+      apiKey: process.env.LUMIQTRACE_API_KEY!,
+      debug: true, // logs flush success/failure to console
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Process exited before flush">
+    The SDK batches events and flushes them every 2 seconds by default. If your script or Lambda handler exits before the flush fires, events are lost. Call `flush()` explicitly before the process ends:
+
+    <Tabs>
+      <Tab title="TypeScript">
+        ```typescript
+        // At the end of a script or serverless handler:
+        await lumiqtrace.getClient().flush();
+        ```
+      </Tab>
+      <Tab title="Python">
+        ```python
+        lumiqtrace.flush()
+        ```
+      </Tab>
+    </Tabs>
+
+    See the [Serverless guide](/guides/serverless) for environment-specific patterns.
+  </Accordion>
+
+  <Accordion title="Wrong baseURL">
+    If you self-host LumiqTrace, make sure you set `baseURL` to your API server's address. The default is `https://api.lumiqtrace.com`.
+
+    ```typescript
+    lumiqtrace.init({
+      apiKey: "lqt_...",
+      baseURL: "https://api.yourdomain.com", // self-hosted
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Firewall or proxy blocking outbound requests">
+    The SDK POSTs to `https://api.lumiqtrace.com/v1/ingest` over HTTPS (port 443). If your environment blocks outbound traffic, you will need to allowlist this endpoint. Use `debug: true` to see if flush requests are failing with network errors.
+  </Accordion>
+
+  <Accordion title="SDK not initialized before LLM call">
+    `lumiqtrace.init()` must be called before any wrapped LLM client is created. If you call `wrapOpenAI()` before `init()`, the wrapper has no client to send events to.
+
+    ```typescript
+    // ✓ Correct — init before wrap
+    lumiqtrace.init({ apiKey: "lqt_..." });
+    const openai = lumiqtrace.wrapOpenAI(new OpenAI());
+
+    // ✗ Wrong — wrap before init
+    const openai = lumiqtrace.wrapOpenAI(new OpenAI());
+    lumiqtrace.init({ apiKey: "lqt_..." });
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Cost showing $0.00 for all events
+
+**Symptom:** Traces appear in the dashboard but the `cost_usd` column is always zero.
+
+<AccordionGroup>
+  <Accordion title="Model name not in the pricing table">
+    The SDK computes cost from a built-in pricing table keyed on the exact model string. If you use a model ID the SDK doesn't recognise, `cost_usd` is set to `0` rather than throwing an error.
+
+    Check your model strings against the [supported models reference](/reference/models). Common mismatches:
+
+    | You send | SDK expects |
+    |----------|------------|
+    | `gpt4o` | `gpt-4o` |
+    | `claude-3-5-sonnet` | `claude-3-5-sonnet-20241022` |
+    | `gemini-pro` | `gemini-1.5-pro` |
+
+    If you use a model not in the table, open an issue on [GitHub](https://github.com/lumiqtrace) — we add new models with each release.
+  </Accordion>
+
+  <Accordion title="Token counts are zero">
+    If `input_tokens` or `output_tokens` are `0`, cost will also be `0`. This can happen if the provider response doesn't include usage data — for example, streaming calls where you don't consume the full stream before closing it.
+
+    For streaming calls, make sure you iterate the full response before the function returns:
+
+    ```typescript
+    const stream = await openai.chat.completions.create({ stream: true, ... });
+    for await (const chunk of stream) {
+      // consume every chunk
+    }
+    // Usage data is in the final chunk — the SDK captures it automatically
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Parent-child spans not linking (broken trace tree)
+
+**Symptom:** Multi-step agent workflows show as separate disconnected traces instead of a nested tree.
+
+<AccordionGroup>
+  <Accordion title="Context not propagated across async boundaries">
+    The SDK uses `AsyncLocalStorage` (Node.js) or `ContextVar` (Python) to propagate trace context. If you break the async chain — for example, by using `setTimeout`, `setImmediate`, or a non-async callback — context is lost.
+
+    Always use `await` for async operations inside `withLumiqtraceContext` or `withAgent`:
+
+    ```typescript
+    // ✓ Context propagates correctly
+    await withAgent({ name: "MyAgent" }, async (agent) => {
+      await agent.traceTool("fetch-data", {}, () => fetchData());
+    });
+
+    // ✗ Context is lost inside setTimeout
+    await withAgent({ name: "MyAgent" }, async (agent) => {
+      setTimeout(() => fetchData(), 0); // no await — context is dropped
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="withLumiqtraceContext missing in request handler">
+    If you call wrapped LLM clients outside a `withLumiqtraceContext` block, each call gets its own isolated trace context and cannot link to siblings.
+
+    Wrap your entire request handler:
+
+    ```typescript
+    export async function POST(req: Request) {
+      const { userId, sessionId } = await getSession(req);
+
+      return withLumiqtraceContext({ userId, sessionId }, async () => {
+        // All LLM calls inside here share the same trace context
+        const summary = await summarize(text);
+        const response = await generate(summary);
+        return Response.json({ response });
+      });
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="withAgent not awaited">
+    If you don't `await withAgent(...)`, the agent span may close before inner spans complete, breaking the parent-child link.
+
+    ```typescript
+    // ✓ Correct
+    await withAgent({ name: "MyAgent" }, async (agent) => { ... });
+
+    // ✗ Wrong — span closes immediately
+    withAgent({ name: "MyAgent" }, async (agent) => { ... });
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Guardrails adding too much latency
+
+**Symptom:** Adding `guardrails: true` increases your p99 latency by 200–800ms.
+
+<AccordionGroup>
+  <Accordion title="Using AI-powered guardrails on the hot path">
+    AI-powered guardrail types (toxicity, topic-block, custom LLM judge) call an AI model for every check, adding 80–800ms per call. For latency-sensitive hot paths, use keyword or regex guardrails instead — these typically complete in under 5ms.
+
+    Reserve AI guardrail types for lower-frequency or non-time-critical operations.
+  </Accordion>
+
+  <Accordion title="Running both pre and post checks unnecessarily">
+    If your threat model only requires input validation, disable post-checks:
+
+    ```typescript
+    const openai = lumiqtrace.wrapOpenAI(new OpenAI(), {
+      guardrails: { pre: true, post: false }, // skip the output check
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="failClosed causing extra retries">
+    If `failClosed: true` is set and the guardrail service is slow or intermittently erroring, every guardrail service error will block your LLM call. Switch to `failClosed: false` unless you specifically need fail-safe blocking behavior.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Events missing in serverless (Lambda / Vercel / Cloud Run)
+
+See the complete [Serverless deployment guide](/guides/serverless) — this is the most common cause of missing traces and deserves a full walkthrough.
+
+**Quick fix:** call `flush()` before your handler returns.
+
+```python
+# Python Lambda
+def handler(event, context):
+    result = call_llm(event["prompt"])
+    lumiqtrace.flush()  # must be last line before return
+    return {"body": result}
+```
+
+```typescript
+// TypeScript Lambda / Vercel
+export default async function handler(req, res) {
+  const result = await callLLM(req.body.prompt);
+  await lumiqtrace.getClient().flush(); // must await before responding
+  res.json({ result });
+}
+```
+
+---
+
+## `401 Unauthorized` from the ingest endpoint
+
+**Cause:** One of the following:
+1. The API key was revoked or rotated and the old key is still in use
+2. The `x-api-key` header is missing from the request
+3. The key belongs to a different project
+
+Go to **Settings → API Keys**, check that the key prefix matches the one your application is using, and rotate if necessary.
+
+---
+
+## Rate limit `429` with "Monthly quota exceeded" 
+
+This is **not** a per-minute rate limit — it means your organization has exhausted its monthly event quota. Retrying later in the same month will not succeed.
+
+Options:
+- Upgrade your plan from **Settings → Billing**
+- Reduce your SDK `sampleRate` to send fewer events: `lumiqtrace.init({ sampleRate: 0.5 })`
+- Wait for your quota to reset at the start of next month
+
+---
+
+## Prompt text not showing in trace detail
+
+**Cause:** Prompt text storage is disabled by default for privacy. Enable it with `storePrompts: true`:
+
+```typescript
+lumiqtrace.init({
+  apiKey: "lqt_...",
+  storePrompts: true, // send and store prompt + completion text
+});
+```
+
+Review your data retention policy before enabling this. Once stored, prompt text is subject to your plan's retention window.
+
+---
+
+## Python SDK not capturing async OpenAI calls
+
+`lumiqtrace.patch_openai()` patches both sync and async clients. If async calls are still not traced, verify:
+
+1. `patch_openai()` is called before any `openai` module is imported in your actual call path
+2. You are using `openai.AsyncOpenAI()` (not a pre-initialized client from before the patch)
+
+```python
+import lumiqtrace
+lumiqtrace.init(api_key="lqt_...")
+lumiqtrace.patch_openai()
+
+# Create client AFTER patching
+import openai
+client = openai.AsyncOpenAI()  # ✓ this is patched
+```
+
+---
+
+## Still stuck?
+
+If none of the above resolves your issue, enable `debug: true` in your SDK init and share the console output. You can open an issue on [GitHub](https://github.com/lumiqtrace) or email [support@lumiqtrace.com](mailto:support@lumiqtrace.com).

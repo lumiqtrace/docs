@@ -1,0 +1,126 @@
+---
+title: "LumiqPilot — AI copilot for your LLM operations"
+sidebarTitle: "LumiqPilot"
+description: "LumiqPilot is an action-first AI copilot that manages alerts, guardrails, prompts, and SDK configuration through natural language conversation, with full audit logging."
+---
+
+<Info>
+  **Open LumiqPilot anywhere:** Press **⌘J** on Mac or **Ctrl+J** on Windows/Linux from any page in the dashboard.
+</Info>
+
+LumiqPilot is the AI copilot built into LumiqTrace. Open it with **⌘J** (Mac) or **Ctrl+J** (Windows/Linux) from anywhere in the dashboard. Instead of navigating menus, you describe what you want in plain language — LumiqPilot interprets your intent, shows you exactly what action it plans to take, asks for confirmation on anything consequential, then executes it and reports back.
+
+<Note>
+  LumiqPilot is available on the **Team** and **Scale** plans. On Free and Pro, the **⌘J** shortcut is visible but opens an upgrade prompt.
+</Note>
+
+## Opening LumiqPilot
+
+You can open LumiqPilot three ways:
+
+- Press **⌘J** / **Ctrl+J** anywhere in the dashboard
+- Click the **Pilot** item in the left sidebar
+- Click **Ask Pilot** in any anomaly or alert notification banner
+
+The Pilot panel slides in from the right side of the screen. Previous conversations in the same project are preserved across sessions.
+
+## What LumiqPilot can do
+
+LumiqPilot has direct write access to the following resources in your project. It reads context from your live metrics, trace data, and configuration before suggesting or taking action.
+
+<CardGroup cols={2}>
+  <Card title="Alert management" icon="bell">
+    Create, modify, snooze, or delete alert rules. "Silence the error-rate alert for the next 2 hours" or "Create a new alert if p99 latency exceeds 5 seconds."
+  </Card>
+  <Card title="Guardrail management" icon="shield">
+    Enable, disable, or update guardrail policies. "Disable the toxicity guardrail on the demo project" or "Add a new guardrail that blocks requests about competitors."
+  </Card>
+  <Card title="Prompt management" icon="file-text">
+    Create new prompt versions, update labels, and roll back to previous versions. "Roll back the support-reply prompt to the previous production version."
+  </Card>
+  <Card title="SDK config" icon="settings">
+    Push real-time configuration changes to running SDK instances. "Switch all GPT-4o calls to GPT-4o-mini" or "Set the sample rate to 10% for one hour."
+  </Card>
+  <Card title="Cost analysis" icon="dollar-sign">
+    Explain cost spikes, surface top-spending models, and generate optimization recommendations on demand.
+  </Card>
+  <Card title="Incident investigation" icon="search">
+    Correlate anomalies, trace errors, and configuration changes into a coherent timeline with a plain-English explanation.
+  </Card>
+</CardGroup>
+
+## Safety gates
+
+LumiqPilot applies two levels of safety before executing any write action:
+
+**Role check.** Members with the **Member** role cannot trigger any write action. Admins can execute most actions. Owners have unrestricted access. If your role is insufficient, Pilot explains what permission is needed and who to contact.
+
+**Confirmation for high-risk actions.** For destructive or broadly impactful operations — deleting an alert rule, disabling guardrails, changing model routing, setting `disable_tracing: true` — Pilot presents a confirmation card before executing. The card shows exactly what will change and gives you a **Confirm** or **Cancel** button. Pilot never takes a high-risk action without explicit confirmation.
+
+<Warning>
+  Actions confirmed in LumiqPilot take effect immediately. There is no undo button — but every action is logged in the audit trail (see below), and most changes can be reversed by asking Pilot to undo them.
+</Warning>
+
+## Example conversations
+
+The following examples show the kinds of requests LumiqPilot handles well:
+
+<AccordionGroup>
+  <Accordion title="Investigating a cost spike">
+    **You:** Why did my costs spike this morning?
+
+    **Pilot:** I can see a 340% cost increase between 9:00 AM and 10:30 AM today. The spike is concentrated in the `gpt-4o` model — 847 requests were made in that window compared to your 7-day average of 210. The largest trace was from session `sess_abc123`, which made 14 sequential GPT-4o calls with an average of 3,200 input tokens each. That session alone cost $0.47. The spike correlates with a deployment at 8:52 AM — it looks like a new feature is making more LLM calls than expected.
+
+    **You:** Create an alert if hourly GPT-4o cost exceeds $5.
+
+    **Pilot:** I'll create an alert rule with metric `cost_usd`, condition `>`, threshold `5.00`, window `60 minutes`, model filter `gpt-4o`. Does that look right?
+
+    **You:** Yes
+
+    **Pilot:** Alert rule "GPT-4o hourly cost > $5" created. It will be evaluated in the next 5-minute cycle.
+  </Accordion>
+  <Accordion title="Switching a model at runtime">
+    **You:** GPT-4o is down. Switch all calls to GPT-4o-mini immediately.
+
+    **Pilot:** I'll push an SDK config rule to redirect all `gpt-4o` calls to `gpt-4o-mini` across all running instances. This is a high-risk operation — it affects all active API key holders for this project. Confirm?
+
+    **You:** Confirm
+
+    **Pilot:** Config rule applied (version 12). Running SDK instances will pick up the change within the next flush cycle (~2 seconds). I'll create a reminder to remove this rule — how long should the override stay active?
+
+    **You:** 1 hour
+
+    **Pilot:** Done. I've set the rule to expire in 60 minutes. You'll receive a notification when it's removed.
+  </Accordion>
+  <Accordion title="Rolling back a prompt">
+    **You:** The support-reply prompt is producing bad responses. Roll it back to the last stable version.
+
+    **Pilot:** The current production version of `support-reply` is v8 (deployed 2 hours ago). The previous production version was v7. I'll move the `production` label from v8 back to v7. Confirm?
+
+    **You:** Yes
+
+    **Pilot:** Label updated. `support-reply` version 7 is now live on production. Version 8 still exists in staging if you want to review and fix it.
+  </Accordion>
+</AccordionGroup>
+
+## Audit log
+
+Every action LumiqPilot takes is written to the audit log with full attribution. To review the log, go to **Settings → Audit Log**. Each entry shows:
+
+- The timestamp of the action
+- The user who triggered it
+- The action type (e.g., `alert.create`, `sdk_config.update`, `prompt.label_update`)
+- The before and after state (for updates)
+- Whether the action required and received confirmation
+
+<Tip>
+  The audit log is exportable as CSV from the Scale plan. Use it to meet compliance requirements or to give engineering managers a review of what changed and when.
+</Tip>
+
+## Self-tracing
+
+LumiqPilot traces its own AI calls through LumiqTrace. You can see Pilot's model calls in your traces view under the `lumiqpilot` agent tag. This means Pilot's own token usage and latency count against your event quota — but it also means you have full transparency into how Pilot is using AI to serve your requests.
+
+## Notifications from Pilot
+
+LumiqPilot can proactively surface information without you asking. When an anomaly is detected or a new cost optimization opportunity is found, a notification badge appears on the Pilot icon in the sidebar. Open Pilot to see the full context and take action.

@@ -1,0 +1,124 @@
+---
+title: "Supported models and pricing"
+sidebarTitle: "Models & pricing"
+description: "All LLM models supported by LumiqTrace's built-in pricing table, with per-token costs for input, output, and cached tokens used in cost_usd calculation."
+---
+
+The LumiqTrace SDK computes `cost_usd` client-side using a built-in pricing table. This page lists all models currently in that table. If you use a model not listed here, `cost_usd` will be `0` — see [Unsupported models](#unsupported-models) for how to handle this.
+
+<Note>
+  Pricing in this table reflects public list prices as of the documentation date. Provider prices change regularly. LumiqTrace updates the SDK pricing table with each release. To get the latest rates, update to the newest SDK version.
+</Note>
+
+## OpenAI
+
+| Model | Input (per 1M tokens) | Output (per 1M tokens) | Cached input |
+|-------|-----------------------|------------------------|--------------|
+| `gpt-4o` | $2.50 | $10.00 | $1.25 |
+| `gpt-4o-2024-08-06` | $2.50 | $10.00 | $1.25 |
+| `gpt-4o-mini` | $0.15 | $0.60 | $0.075 |
+| `gpt-4o-mini-2024-07-18` | $0.15 | $0.60 | $0.075 |
+| `gpt-4-turbo` | $10.00 | $30.00 | — |
+| `gpt-4-turbo-2024-04-09` | $10.00 | $30.00 | — |
+| `gpt-3.5-turbo` | $0.50 | $1.50 | — |
+| `o1` | $15.00 | $60.00 | $7.50 |
+| `o1-mini` | $3.00 | $12.00 | $1.50 |
+| `o3-mini` | $1.10 | $4.40 | $0.55 |
+| `text-embedding-3-small` | $0.02 | — | — |
+| `text-embedding-3-large` | $0.13 | — | — |
+| `text-embedding-ada-002` | $0.10 | — | — |
+
+## Anthropic
+
+| Model | Input (per 1M tokens) | Output (per 1M tokens) | Cache read | Cache write |
+|-------|-----------------------|------------------------|------------|-------------|
+| `claude-opus-4-7` | $15.00 | $75.00 | $1.50 | $18.75 |
+| `claude-sonnet-4-6` | $3.00 | $15.00 | $0.30 | $3.75 |
+| `claude-haiku-4-5-20251001` | $0.80 | $4.00 | $0.08 | $1.00 |
+| `claude-3-5-sonnet-20241022` | $3.00 | $15.00 | $0.30 | $3.75 |
+| `claude-3-5-haiku-20241022` | $0.80 | $4.00 | $0.08 | $1.00 |
+| `claude-3-opus-20240229` | $15.00 | $75.00 | $1.50 | $18.75 |
+
+## Google Gemini
+
+| Model | Input (per 1M tokens) | Output (per 1M tokens) | Cached input |
+|-------|-----------------------|------------------------|--------------|
+| `gemini-2.5-pro` | $1.25 | $10.00 | $0.31 |
+| `gemini-2.5-flash` | $0.075 | $0.30 | $0.019 |
+| `gemini-1.5-pro` | $1.25 | $5.00 | $0.31 |
+| `gemini-1.5-flash` | $0.075 | $0.30 | $0.019 |
+| `gemini-1.0-pro` | $0.50 | $1.50 | — |
+
+## AWS Bedrock
+
+| Model | Input (per 1M tokens) | Output (per 1M tokens) |
+|-------|-----------------------|------------------------|
+| `amazon.nova-lite-v1:0` | $0.06 | $0.24 |
+| `amazon.nova-micro-v1:0` | $0.035 | $0.14 |
+| `amazon.nova-pro-v1:0` | $0.80 | $3.20 |
+| `amazon.titan-text-express-v1` | $0.20 | $0.60 |
+| `amazon.titan-text-lite-v1` | $0.15 | $0.20 |
+
+## Mistral
+
+| Model | Input (per 1M tokens) | Output (per 1M tokens) |
+|-------|-----------------------|------------------------|
+| `mistral-large-latest` | $2.00 | $6.00 |
+| `mistral-small-latest` | $0.20 | $0.60 |
+| `mistral-7b-instruct` | $0.25 | $0.25 |
+| `mixtral-8x7b-instruct` | $0.70 | $0.70 |
+
+## Groq (hosted models)
+
+| Model | Input (per 1M tokens) | Output (per 1M tokens) |
+|-------|-----------------------|------------------------|
+| `llama-3.3-70b-versatile` | $0.59 | $0.79 |
+| `llama-3.1-8b-instant` | $0.05 | $0.08 |
+| `mixtral-8x7b-32768` | $0.24 | $0.24 |
+| `gemma2-9b-it` | $0.20 | $0.20 |
+
+---
+
+## Unsupported models
+
+If your model is not in the table, the SDK sets `cost_usd: 0` and logs a warning at `debug` level. Your traces will still appear in the dashboard — only the cost column will be blank.
+
+**To add cost tracking for an unsupported model**, you have two options:
+
+**Option 1 — Compute and pass cost manually:**
+```typescript
+const response = await myCustomModel.complete(prompt);
+
+const { span } = startSpan({
+  name: "custom-model-call",
+  model: "my-custom-model",
+  provider: "custom",
+});
+
+await span.end({
+  status: "success",
+  input_tokens: response.usage.input,
+  output_tokens: response.usage.output,
+  cost_usd: (response.usage.input * 0.002 + response.usage.output * 0.006) / 1000,
+});
+```
+
+**Option 2 — Request model support:** Open an issue on [GitHub](https://github.com/lumiqtrace) with the model name and public pricing URL. New models are typically added within one release cycle.
+
+---
+
+## Cached token pricing
+
+Cached tokens are billed at a reduced rate when the model provider serves them from its prompt cache. LumiqTrace extracts cached token counts automatically:
+
+- **OpenAI:** `response.usage.prompt_tokens_details.cached_tokens`
+- **Anthropic:** `response.usage.cache_read_input_tokens`
+- **Google:** `response.usageMetadata.cachedContentTokenCount`
+
+The cost formula used by the SDK:
+
+```
+cost_usd = (input_tokens × input_price
+           + output_tokens × output_price
+           + cached_tokens × cached_price) ÷ 1,000,000
+```

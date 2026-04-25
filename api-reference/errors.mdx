@@ -56,12 +56,19 @@ You have exceeded a rate limit. The response includes a `Retry-After` header ind
 
 ```json
 {
-  "error": "Monthly quota exceeded"
+  "error": "Rate limit exceeded"
 }
 ```
 
+**Two distinct 429 causes — read the error message to distinguish them:**
+
+| Error message | Cause | Resolution |
+|--------------|-------|-----------|
+| `"Rate limit exceeded"` | Per-minute request rate limit hit | Wait for `Retry-After` seconds, then retry |
+| `"Monthly quota exceeded"` | Organization has used all events for this billing period | Upgrade plan, reduce `sampleRate`, or wait for quota reset |
+
 <Warning>
-A `429` on `POST /v1/ingest` may indicate that your organization has exhausted its monthly event quota, not just a per-minute rate limit. In that case, retrying later in the same month will not succeed — you need to upgrade your plan or wait for the quota to reset.
+  A `429` with `"Monthly quota exceeded"` on `POST /v1/ingest` will **not** resolve by retrying later in the same month. The only resolutions are upgrading your plan, reducing your SDK `sampleRate` to stay within quota, or waiting until the quota resets at the start of next month. Do not retry these in a loop — they will keep failing.
 </Warning>
 
 ### 500 Internal Server Error

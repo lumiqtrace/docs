@@ -3,22 +3,72 @@
   "theme": "luma",
   "name": "LumiqTrace",
   "colors": {
-    "primary": "#7c7c7c",
-    "light": "#080808",
-    "dark": "#c1c1c1"
+    "primary": "#00d4ff",
+    "light": "#33ddff",
+    "dark": "#00b8e0"
   },
-  "favicon": "https://media.brand.dev/4df870fc-c790-482f-9c7a-c7adeafd16f0.png",
   "logo": {
-    "light": "https://media.brand.dev/f81a25db-0f7d-4772-924d-272c1eadfbb2.svg",
-    "dark": "https://media.brand.dev/c8fbe76b-ded9-43ef-9fa5-5cddf153b7cd.png"
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "appearance": {
+    "default": "system"
+  },
+  "fonts": {
+    "family": "Inter",
+    "heading": {
+      "family": "Inter",
+      "weight": 700
+    }
+  },
+  "icons": {
+    "library": "lucide"
+  },
+  "styling": {
+    "eyebrows": "breadcrumbs",
+    "codeblocks": {
+      "theme": {
+        "light": "github-light",
+        "dark": "one-dark-pro"
+      }
+    }
   },
   "navbar": {
+    "links": [
+      {
+        "label": "Changelog",
+        "href": "/reference/changelog"
+      },
+      {
+        "label": "Status",
+        "href": "https://status.lumiqtrace.com"
+      }
+    ],
     "primary": {
       "type": "github",
       "href": "https://github.com/lumiqtrace"
     }
   },
   "navigation": {
+    "global": {
+      "anchors": [
+        {
+          "anchor": "API Reference",
+          "icon": "square-terminal",
+          "href": "/api-reference/authentication"
+        },
+        {
+          "anchor": "Changelog",
+          "icon": "clock",
+          "href": "/reference/changelog"
+        },
+        {
+          "anchor": "Status",
+          "icon": "circle-check",
+          "href": "https://status.lumiqtrace.com"
+        }
+      ]
+    },
     "tabs": [
       {
         "tab": "Documentation",
@@ -28,19 +78,45 @@
             "pages": [
               "introduction",
               "quickstart",
-              "concepts"
+              "concepts",
+              "troubleshooting"
             ]
           },
           {
-            "group": "SDK",
+            "group": "Guides",
+            "pages": [
+              "guides/environments",
+              "guides/serverless",
+              "guides/production-checklist",
+              "guides/webhooks"
+            ]
+          },
+          {
+            "group": "SDK — TypeScript",
             "pages": [
               "sdk/typescript",
-              "sdk/python",
-              "sdk/integrations",
               "sdk/agent-tracing",
               "sdk/manual-spans",
               "sdk/guardrails",
-              "sdk/prompt-management"
+              "sdk/prompt-management",
+              "sdk/pii-redaction",
+              "sdk/config-propagation"
+            ]
+          },
+          {
+            "group": "SDK — Python",
+            "pages": [
+              "sdk/python",
+              "sdk/fastapi-middleware",
+              "sdk/flask-middleware"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "sdk/langchain",
+              "sdk/google-adk",
+              "sdk/integrations"
             ]
           },
           {
@@ -49,8 +125,16 @@
               "dashboard/overview",
               "dashboard/traces",
               "dashboard/costs",
-              "dashboard/ai-features",
-              "dashboard/alerts"
+              "dashboard/performance",
+              "dashboard/alerts",
+              "dashboard/evaluations",
+              "dashboard/guardrails",
+              "dashboard/prompts",
+              "dashboard/simulations",
+              "dashboard/incidents",
+              "dashboard/sessions",
+              "dashboard/lumiqpilot",
+              "dashboard/ai-features"
             ]
           },
           {
@@ -60,39 +144,21 @@
               "account/api-keys",
               "account/billing"
             ]
-          }
-        ]
-      },
-      {
-        "tab": "API Reference",
-        "groups": [
+          },
           {
-            "group": "Overview",
+            "group": "Platform",
             "pages": [
-              "api-reference/authentication",
-              "api-reference/errors"
+              "platform/self-hosting",
+              "platform/environment-variables",
+              "platform/security"
             ]
           },
           {
-            "group": "Ingest",
+            "group": "Reference",
             "pages": [
-              "api-reference/ingest"
-            ]
-          },
-          {
-            "group": "Data",
-            "pages": [
-              "api-reference/events",
-              "api-reference/traces",
-              "api-reference/metrics"
-            ]
-          },
-          {
-            "group": "AI Features",
-            "pages": [
-              "api-reference/ai-cost-optimizer",
-              "api-reference/ai-nl-query",
-              "api-reference/ai-root-cause"
+              "reference/span-kinds",
+              "reference/models",
+              "reference/changelog"
             ]
           }
         ]

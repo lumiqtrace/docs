@@ -1,0 +1,234 @@
+---
+title: "FastAPI middleware — automatic HTTP request tracing"
+sidebarTitle: "FastAPI middleware"
+description: "Add LumiqFastAPIMiddleware to your FastAPI app to automatically trace every HTTP request and instrument individual LLM calls with @observe_llm and @observe_span."
+---
+
+The `lumiq-fastapi` package adds ASGI middleware to your FastAPI application that automatically creates a trace context for every incoming HTTP request. You can then use the `@observe_llm` and `@observe_span` decorators to attach LLM call details and custom spans to that context without passing trace objects through your call stack.
+
+## Installation
+
+```bash
+pip install lumiq-fastapi
+```
+
+`lumiq-fastapi` requires `httpx` for flushing traces. Install it alongside the package if it is not already in your environment:
+
+```bash
+pip install lumiq-fastapi httpx
+```
+
+## Adding the middleware
+
+Import `LumiqFastAPIMiddleware` and `LumiqConfig`, then register the middleware with your FastAPI app using `add_middleware`.
+
+```python
+from fastapi import FastAPI
+from lumiq_fastapi import LumiqFastAPIMiddleware, LumiqConfig
+
+app = FastAPI()
+
+config = LumiqConfig(api_key="lqt_your_api_key_here")
+app.add_middleware(LumiqFastAPIMiddleware, config=config)
+```
+
+Once registered, every HTTP request to your app creates a trace context. The middleware records the HTTP method, path, response status, and total request duration, then flushes the data to LumiqTrace in the background.
+
+## `LumiqConfig` options
+
+<ParamField body="api_key" type="string" required>
+  Your LumiqTrace API key. Must start with `lqt_`.
+</ParamField>
+
+<ParamField body="base_url" type="string" default="https://api.lumiqtrace.com">
+  Override the LumiqTrace API base URL. Use this only if you are self-hosting the ingest endpoint.
+</ParamField>
+
+<ParamField body="enabled" type="boolean" default="True">
+  When `False`, the middleware passes all requests through without tracing. Useful for disabling tracing in test environments.
+</ParamField>
+
+<ParamField body="sample_rate" type="float" default="1.0">
+  Fraction of requests to trace, between `0.0` and `1.0`. Set to `0.1` to trace 10% of requests in high-traffic environments.
+</ParamField>
+
+<ParamField body="capture_request_body" type="boolean" default="False">
+  When `True`, the request body is captured and attached to the trace. Enable only after reviewing your data retention policy — request bodies may contain sensitive data.
+</ParamField>
+
+<ParamField body="capture_response_body" type="boolean" default="False">
+  When `True`, the response body is captured and attached to the trace.
+</ParamField>
+
+<ParamField body="redact_fields" type="list[str]" default='["password", "token", "api_key"]'>
+  Field names whose values are redacted before any data is stored. Applied regardless of `capture_request_body`.
+</ParamField>
+
+<ParamField body="debug" type="boolean" default="False">
+  When `True`, logs flush errors to stdout. Enable during integration testing.
+</ParamField>
+
+## Tracing LLM calls with `@observe_llm`
+
+Use the `@observe_llm` decorator on any async function that makes an LLM call. The decorator captures the model name, provider, duration, and token usage (extracted automatically from the response object if it has a `.usage` attribute).
+
+```python
+from fastapi import FastAPI
+from lumiq_fastapi import LumiqFastAPIMiddleware, LumiqConfig, observe_llm
+import openai
+
+app = FastAPI()
+app.add_middleware(LumiqFastAPIMiddleware, config=LumiqConfig(api_key="lqt_your_api_key_here"))
+
+client = openai.AsyncOpenAI()
+
+@observe_llm(model="gpt-4o", provider="openai")
+async def generate_summary(text: str) -> str:
+    response = await client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "Summarize the following text concisely."},
+            {"role": "user", "content": text},
+        ],
+    )
+    return response.choices[0].message.content
+
+@app.post("/summarize")
+async def summarize_endpoint(body: dict):
+    summary = await generate_summary(body["text"])
+    return {"summary": summary}
+```
+
+`@observe_llm` parameters:
+
+<ParamField body="model" type="string">
+  The model identifier to record on the span. Example: `"gpt-4o"`, `"claude-sonnet-4-6"`.
+</ParamField>
+
+<ParamField body="provider" type="string">
+  The provider name to record on the span. Example: `"openai"`, `"anthropic"`.
+</ParamField>
+
+## Tracing custom operations with `@observe_span`
+
+Use `@observe_span` to instrument any async function as a named span. The decorator records the function name, duration, and status (`success` or `error`) as attributes on the current request's trace context.
+
+```python
+from lumiq_fastapi import observe_span
+
+@observe_span("document-retrieval", span_type="retriever")
+async def retrieve_documents(query: str) -> list[str]:
+    # Fetch relevant documents from your vector store
+    results = await vector_store.search(query, top_k=5)
+    return [doc.content for doc in results]
+
+@observe_span("rag-pipeline", span_type="custom")
+async def run_rag(query: str) -> str:
+    docs = await retrieve_documents(query)
+    summary = await generate_summary("\n\n".join(docs))
+    return summary
+```
+
+`@observe_span` parameters:
+
+<ParamField body="name" type="string" required>
+  The span name. Appears as the operation label in the trace view.
+</ParamField>
+
+<ParamField body="span_type" type="string" default="custom">
+  A hint for the span type. Common values: `"llm"`, `"retriever"`, `"custom"`.
+</ParamField>
+
+## Setting custom attributes
+
+Use `set_attribute` to attach arbitrary key-value data to the current request's trace context. Call it from anywhere in your request handler — the attribute is included in the trace when it flushes.
+
+```python
+from lumiq_fastapi import set_attribute
+
+@app.post("/chat")
+async def chat_endpoint(body: dict):
+    user_id = body.get("user_id")
+    set_attribute("user.id", user_id)
+    set_attribute("feature", "chat")
+
+    response = await generate_response(body["message"])
+    return {"response": response}
+```
+
+## Getting the current trace ID
+
+Use `get_current_trace_id()` to retrieve the trace ID for the current request. This is useful for logging or for correlating LumiqTrace data with your own observability stack.
+
+```python
+from lumiq_fastapi import get_current_trace_id
+import logging
+
+logger = logging.getLogger(__name__)
+
+@app.post("/generate")
+async def generate_endpoint(body: dict):
+    trace_id = get_current_trace_id()
+    logger.info("Handling request", extra={"lumiqtrace_id": trace_id})
+
+    result = await generate_summary(body["text"])
+    return {"result": result, "trace_id": trace_id}
+```
+
+## Complete example
+
+This example shows a FastAPI app with middleware, an LLM call, a retrieval step, and custom attributes all wired together.
+
+```python
+from fastapi import FastAPI
+from lumiq_fastapi import (
+    LumiqFastAPIMiddleware,
+    LumiqConfig,
+    observe_llm,
+    observe_span,
+    set_attribute,
+)
+import openai
+
+app = FastAPI()
+app.add_middleware(
+    LumiqFastAPIMiddleware,
+    config=LumiqConfig(
+        api_key="lqt_your_api_key_here",
+        environment="production",
+        sample_rate=1.0,
+    ),
+)
+
+openai_client = openai.AsyncOpenAI()
+
+@observe_span("vector-search", span_type="retriever")
+async def search_docs(query: str) -> list[str]:
+    # Replace with your actual vector store call
+    return ["Relevant document 1", "Relevant document 2"]
+
+@observe_llm(model="gpt-4o", provider="openai")
+async def answer_question(question: str, context: str) -> str:
+    response = await openai_client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": f"Answer using this context:\n{context}"},
+            {"role": "user", "content": question},
+        ],
+    )
+    return response.choices[0].message.content
+
+@app.post("/ask")
+async def ask_endpoint(body: dict):
+    user_id = body.get("user_id", "anonymous")
+    set_attribute("user.id", user_id)
+
+    docs = await search_docs(body["question"])
+    answer = await answer_question(body["question"], "\n".join(docs))
+
+    return {"answer": answer}
+```
+
+<Warning>
+  The middleware flushes traces asynchronously in batches of 10 or every 5 seconds, whichever comes first. In short-lived processes or test environments, call `await middleware._flush()` explicitly before the process exits to ensure all traces are sent.
+</Warning>

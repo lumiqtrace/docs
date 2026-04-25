@@ -1,13 +1,13 @@
 ---
-title: "Alerts — get notified when your LLM metrics cross a limit"
+title: "Alerts — get notified when your agent metrics cross a threshold"
 sidebarTitle: "Alerts"
-description: "Create alert rules that fire when error rates, costs, or latency exceed your thresholds. Get notified by email or webhook within minutes of a breach."
+description: "Create alert rules that fire when agent error rates, costs, or latency exceed your thresholds. Get notified by email or webhook within minutes of a breach."
 ---
 
-Alerts let you set thresholds on your LLM metrics and receive a notification the moment one is crossed. Instead of checking the dashboard manually, you define the conditions that matter to you — a cost spike, an error rate jump, or a latency increase — and LumiqTrace notifies you automatically. Alert rules are evaluated every 5 minutes against your live data.
+Alerts let you set thresholds on your agent metrics and receive a notification the moment one is crossed. Instead of checking the dashboard manually, you define the conditions that matter — a cost spike, an agent error rate surge, or a latency increase — and LumiqTrace notifies you automatically. Alert rules are evaluated every 5 minutes against your live data.
 
 <Warning>
-  Alerts require the Pro plan or higher. The Free plan has no access to alert rules or alert history. See the plan limits for rules and webhooks below.
+  Alerts require the **Pro** plan or higher. The Free plan has no access to alert rules or alert history.
 </Warning>
 
 ## Plan limits
@@ -19,81 +19,67 @@ Alerts let you set thresholds on your LLM metrics and receive a notification the
 | Team | Unlimited | Not available |
 | Scale | Unlimited | Included |
 
-## Alert rules list
-
-The main view shows a table of all alert rules configured for your project. Each row displays:
-
-- **Name** — the label you gave the rule
-- **Metric** — the measurement being monitored
-- **Condition** — whether the rule fires when the metric goes above or below the threshold
-- **Threshold** — the value that triggers the alert
-- **Window** — the time window over which the metric is aggregated before being compared to the threshold
-- **Status** — a toggle showing whether the rule is currently enabled or disabled
-
-Click the toggle in the Status column to enable or disable a rule without deleting it. Disabled rules do not fire and do not consume any of your rule quota.
-
 ## Creating an alert rule
 
 Click **New rule** to open the rule creation dialog.
 
 <Steps>
   <Step title="Choose a metric">
-    Select the metric you want to monitor from the dropdown:
+    Select the metric you want to monitor:
 
-    - `error_rate` — percentage of requests that fail, timeout, or are rate-limited
-    - `cost_usd` — total spend in USD for the window
+    - `error_rate` — percentage of agent operations that fail, timeout, or are rate-limited
+    - `cost_usd` — total agent spend in USD for the window
     - `latency_ms` — average response time in milliseconds
+    - `token_count` — total tokens consumed
+    - `request_count` — total operations
 
-    Additional metrics such as `token_count` and `request_count` are also available.
+    For agent-specific monitoring, use `error_rate` to catch tool failures and model errors, and `cost_usd` to guard against runaway agent loops.
   </Step>
   <Step title="Set the condition and threshold">
-    Choose whether the rule fires when the metric is **greater than** (`>`) or **less than** (`<`) your threshold value. Enter the threshold as a number — for example, `0.05` for a 5% error rate, or `50` for $50 of spend.
+    Choose whether the rule fires when the metric is **greater than** (`>`) or **less than** (`<`) your threshold value.
   </Step>
   <Step title="Choose a time window">
-    Select how long a window of data to aggregate before comparing to your threshold. Shorter windows catch problems faster but may be noisier; longer windows are more stable but slower to react.
+    Select how long a window to aggregate before comparing to your threshold.
 
-    Available windows: 5 minutes, 15 minutes, 30 minutes, 60 minutes.
+    | Window | Best for |
+    |--------|---------|
+    | 5 min | Catching sudden spikes from agent errors |
+    | 15 min | Sustained error rate increases |
+    | 30 min | Cost trend alerts |
+    | 60 min | Latency degradation patterns |
   </Step>
   <Step title="Add notification recipients">
-    Enter one or more email addresses to notify when the rule fires. Separate multiple addresses with commas. Notifications are sent via email with a summary of the rule that triggered and the current metric value.
+    Enter one or more email addresses to notify when the rule fires.
   </Step>
   <Step title="Add a webhook URL (Scale plan)">
-    Optionally, enter a URL to receive a POST request when the alert fires. See the webhook payload format below. Webhooks are only available on the Scale plan.
+    Enter a URL to receive a POST when the alert fires. See the [Webhooks guide](/guides/webhooks) for the payload schema, signature verification, and integration examples with Slack and PagerDuty.
   </Step>
 </Steps>
 
-Click **Save rule** to activate it. The rule will be evaluated in the next 5-minute cycle.
+Click **Save rule** to activate it. It will be evaluated in the next 5-minute cycle.
 
 ## Alert history
 
-The alert history table below the rules list shows the last 30 times any alert fired. Each entry shows:
+The alert history table shows the last 30 times any alert fired. Each entry shows the time, rule name, actual metric value, and configured threshold.
 
-- **Time** — when the alert fired
-- **Rule** — which rule triggered
-- **Value** — the actual metric value that crossed the threshold
-- **Threshold** — the configured limit for that rule
-
-Use alert history to understand how often your rules are firing. If a rule fires very frequently, consider raising the threshold or increasing the time window to reduce noise.
+If a rule fires very frequently, consider raising the threshold or increasing the time window to reduce noise. High-frequency alerts on `error_rate` often indicate an agent tool that fails intermittently — investigate the failing tool rather than silencing the alert.
 
 ## Webhook payload
 
-<Warning>
-  Webhook delivery requires the Scale plan. On Pro and Team plans, the webhook URL field is visible in the dialog but submissions will not deliver a payload.
-</Warning>
-
-When a Scale plan alert fires and a webhook URL is configured, LumiqTrace sends an HTTP POST request to your URL with the following JSON body:
+When a Scale plan alert fires and a webhook URL is configured, LumiqTrace POSTs a signed JSON payload:
 
 ```json
 {
-  "alert_id": "550e8400-e29b-41d4-a716-446655440000",
-  "rule_name": "Error rate above 5%",
+  "event": "alert.fired",
+  "alert_id": "alert_abc123",
+  "rule_name": "Agent error rate above 5%",
   "metric": "error_rate",
   "condition": ">",
   "threshold": 0.05,
   "current_value": 0.12,
   "window_min": 15,
-  "project_id": "a1b2c3d4-...",
-  "organization_id": "e5f6a7b8-...",
+  "project_id": "proj_xyz789",
+  "organization_id": "org_def456",
   "fired_at": "2026-04-20T14:32:00Z",
   "dashboard_url": "https://app.lumiqtrace.com/your-org/your-project/traces"
 }
@@ -101,6 +87,8 @@ When a Scale plan alert fires and a webhook URL is configured, LumiqTrace sends 
 
 Your endpoint should respond with a 2xx status code within 10 seconds. LumiqTrace retries failed deliveries up to 3 times with exponential backoff.
 
+See the full [Webhooks guide](/guides/webhooks) for signature verification code and Slack/PagerDuty integration examples.
+
 <Tip>
-  Use the webhook payload to integrate LumiqTrace alerts with tools like Slack (via incoming webhooks), PagerDuty, or your own on-call system. The `dashboard_url` field links directly to the traces page so whoever receives the alert can investigate immediately.
+  The `dashboard_url` field links directly to the traces page so whoever receives the alert can start investigating immediately without navigating to find the right project.
 </Tip>

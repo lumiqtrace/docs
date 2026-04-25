@@ -1,0 +1,127 @@
+---
+title: "Prompts — version control and manage your prompt library"
+sidebarTitle: "Prompts"
+description: "Store, version, label, and roll back prompt templates in the LumiqTrace prompt library. Fetch prompts at runtime via the SDK so you can update them without redeploying."
+---
+
+The Prompts page is your prompt version control system. Every prompt change creates a new immutable version — previous versions are never overwritten. You assign labels like `production` and `staging` to versions, and your running application fetches prompts by label at runtime using the SDK. This means you can update a production prompt without touching your code.
+
+## The prompt library
+
+The main Prompts page shows all prompts in your project as a list. Each row shows the prompt name, the number of versions, which labels are active, and when it was last updated.
+
+Click any prompt to open its version history view.
+
+## Creating a prompt
+
+<Steps>
+  <Step title="Click New prompt">
+    On the main Prompts page, click **New prompt**.
+  </Step>
+  <Step title="Choose a name">
+    Enter a slug-style name for the prompt, e.g. `support-reply` or `product-description-generator`. This name is used by the SDK to fetch the prompt at runtime.
+  </Step>
+  <Step title="Choose a type">
+    - **Text** — a single string with `{{variable}}` placeholders for dynamic content
+    - **Chat** — an array of message objects (`role`, `content`) with placeholder support
+  </Step>
+  <Step title="Write the prompt">
+    Enter your prompt in the editor. Use `{{variable_name}}` syntax for any values you want to substitute at runtime.
+  </Step>
+  <Step title="Add model config (optional)">
+    Optionally fill in suggested model, temperature, and max_tokens. These are stored with the prompt for reference but are not enforced by the SDK — you decide whether to use them.
+  </Step>
+  <Step title="Set a label">
+    Assign a label, typically `staging`, to this initial version.
+  </Step>
+  <Step title="Add a commit message">
+    Write a short description of what this version contains. Commit messages appear in the version history.
+  </Step>
+  <Step title="Save">
+    Click **Save**. Version 1 is created and ready to fetch via the SDK.
+  </Step>
+</Steps>
+
+## Version history
+
+Each prompt's detail view shows a table of all versions:
+
+| Column | Description |
+|--------|-------------|
+| Version | Sequential version number, starting at 1 |
+| Labels | Active labels on this version (e.g., `production`, `staging`) |
+| Commit message | Description of what changed |
+| Created | Timestamp and author |
+| Actions | View, promote, roll back |
+
+Click **View** to see the full prompt text for any version. Click **Promote** to move a label to this version. Click **Roll back** to move the `production` label to this version in one click.
+
+## Labels
+
+Labels are mutable pointers to specific prompt versions. The recommended workflow is:
+
+1. Create a new version and assign it the `staging` label
+2. Test the new version in your staging environment
+3. When ready, promote it to `production` by clicking **Promote** or by calling `updateLabels()` in the SDK
+
+Your application code fetches prompts by label:
+
+```typescript
+const prompt = await promptClient.get("support-reply", { label: "production" });
+```
+
+The label pointer updates immediately when you promote. Your running application will pick up the new version on its next prompt fetch (respecting the 5-minute cache TTL, or immediately if you clear the cache).
+
+<Note>
+  Labels are not exclusive by default. You can have `production` on multiple versions simultaneously. If you want a single canonical production version, remove the label from the old version before promoting the new one.
+</Note>
+
+## Protected labels
+
+Some labels — such as `production` — can be locked so that only users with **Admin** or **Owner** roles can move them. Configure protected labels in **Settings → Prompts**. This prevents accidental promotion from a Member-level account.
+
+## Rollback
+
+To roll back to a previous version:
+
+1. Open the prompt's version history
+2. Find the version you want to restore
+3. Click **Roll back** — this moves the `production` label to that version instantly
+
+You can also roll back via LumiqPilot: "Roll back the support-reply prompt to the previous production version."
+
+## Dependency tracking
+
+When one prompt references another (e.g., a system prompt that embeds a shared policy block), you can declare the dependency in the prompt metadata. LumiqTrace tracks the dependency graph and warns you if a dependency is about to be archived or rolled back.
+
+## Fetching prompts from the SDK
+
+See the full SDK reference for [TypeScript](/sdk/prompt-management) and [Python](/sdk/python#prompt-management) prompt fetching, compilation, and cache management.
+
+Quick reference:
+
+<CodeGroup>
+```typescript TypeScript
+import { lumiqtrace, PromptClient } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+const prompts = new PromptClient(lumiqtrace.getClient());
+
+// Fetch by label
+const prompt = await prompts.get("support-reply", { label: "production" });
+
+// Compile variables
+const text = prompts.compile(prompt, { customer_name: "Alex", order_id: "123" });
+```
+
+```python Python
+from lumiqtrace import PromptClient, get_client
+import lumiqtrace
+
+lumiqtrace.init(api_key="lqt_your_api_key_here")
+prompts = PromptClient(get_client())
+
+prompt = prompts.get("support-reply", label="production")
+text = prompts.compile(prompt, {"customer_name": "Alex", "order_id": "123"})
+```
+</CodeGroup>

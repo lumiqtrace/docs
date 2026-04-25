@@ -1,26 +1,24 @@
 ---
-title: "Quickstart: instrument your app in 5 minutes"
-description: "Send your first LLM trace to LumiqTrace by wrapping your OpenAI client with the SDK. No manual instrumentation required — two lines of setup is all it takes."
+title: "Quickstart: instrument your first agent in 5 minutes"
+description: "Send your first agent trace to LumiqTrace by wrapping your LLM client or agent framework with the SDK. No manual instrumentation required — two lines of setup."
 ---
 
-LumiqTrace works by wrapping your existing LLM client. Once the SDK is initialized, every call you make to OpenAI (or Anthropic, or Google) is automatically captured and sent to your project's dashboard. This guide walks you through the full setup using Node.js and OpenAI, with a Python alternative included.
+LumiqTrace instruments your agents and LLM calls by wrapping your existing clients. Once initialized, every agent run, tool call, and model interaction is automatically captured and sent to your project's dashboard. This guide walks through the setup using Node.js and OpenAI, with a Python alternative included.
 
 <Steps>
   <Step title="Create your account and project">
     Go to [app.lumiqtrace.com](https://app.lumiqtrace.com) and sign up for a free account. After verifying your email, you'll be taken through the onboarding wizard:
 
-    1. **Create an organization** — this is your billing workspace. Give it a name that reflects your company or team.
-    2. **Create a project** — a project is an isolated container for LLM events. Name it after the application you're instrumenting (e.g. `my-chatbot-production`).
-    3. **Copy your API key** — after the project is created, your API key is shown once. Copy it somewhere safe. It starts with `lqt_` followed by 64 hex characters.
+    1. **Create an organization** — your billing workspace.
+    2. **Create a project** — an isolated container for agent events. Name it after the application you're instrumenting (e.g. `my-support-agent-production`).
+    3. **Copy your API key** — shown once after project creation. It starts with `lqt_` followed by 64 hex characters.
 
     <Warning>
-      Your API key is shown in full only once at project creation. If you lose it, you can rotate it from **Settings → API Keys**, but the old key will be invalidated after a 24-hour grace period.
+      Your API key is shown in full only once. If you lose it, rotate it from **Settings → API Keys** — the old key remains valid for 24 hours during rollover.
     </Warning>
   </Step>
 
   <Step title="Install the SDK">
-    Install the LumiqTrace SDK and the OpenAI client as dependencies in your project.
-
     <Tabs>
       <Tab title="TypeScript / Node.js">
         ```bash
@@ -35,8 +33,8 @@ LumiqTrace works by wrapping your existing LLM client. Once the SDK is initializ
     </Tabs>
   </Step>
 
-  <Step title="Initialize the SDK and wrap your client">
-    Add the following setup code before any LLM calls are made — typically at the entry point of your application.
+  <Step title="Initialize and wrap your client">
+    Add the following at the entry point of your application — before any agent or LLM calls are made.
 
     <Tabs>
       <Tab title="TypeScript / Node.js">
@@ -44,133 +42,185 @@ LumiqTrace works by wrapping your existing LLM client. Once the SDK is initializ
         import { lumiqtrace } from "@lumiqtrace/sdk";
         import OpenAI from "openai";
 
-        lumiqtrace.init({ apiKey: "lqt_your_key_here" });
+        lumiqtrace.init({
+          apiKey: process.env.LUMIQTRACE_API_KEY!,
+          environment: "production",
+        });
+
         const openai = lumiqtrace.wrapOpenAI(new OpenAI());
         ```
 
-        `lumiqtrace.init()` initializes the global SDK client. `lumiqtrace.wrapOpenAI()` patches the OpenAI client so all `chat.completions.create` calls are automatically traced. The original client behaviour is preserved — errors are always re-thrown unchanged.
+        `lumiqtrace.init()` initializes the global SDK client. `wrapOpenAI()` patches the OpenAI client so all calls — and every agent step that goes through it — are automatically traced. Your existing code is unchanged.
       </Tab>
       <Tab title="Python">
         ```python
         import lumiqtrace
 
-        lumiqtrace.init(api_key="lqt_your_key_here", environment="production")
+        lumiqtrace.init(
+            api_key="lqt_your_key_here",
+            environment="production",
+        )
         lumiqtrace.patch_openai()
 
-        # Use the openai module as normal — all calls are now traced
-        import openai
+        import openai  # import after patching
         ```
 
-        `lumiqtrace.patch_openai()` monkey-patches both the sync and async `openai.chat.completions.create` methods. Like the TypeScript SDK, exceptions are always re-raised so your existing error handling is unaffected.
+        `lumiqtrace.patch_openai()` monkey-patches both sync and async `openai.chat.completions.create`. Exceptions are always re-raised so your existing error handling is unaffected.
       </Tab>
     </Tabs>
 
     <Note>
-      Replace `lqt_your_key_here` with the API key you copied from the dashboard. The SDK will log a warning to the console if your key does not start with `lqt_`.
+      Replace `lqt_your_key_here` with the API key from the dashboard. The SDK logs a warning if the key format is invalid.
     </Note>
   </Step>
 
-  <Step title="Make an LLM call">
-    Use your wrapped client exactly as you would normally. No additional instrumentation is needed.
+  <Step title="Run your agent or make an LLM call">
+    Use your client exactly as you would normally. The SDK captures everything — model name, input and output tokens, cost, latency, tool calls, streaming TTFT, and finish reason.
 
     <Tabs>
       <Tab title="TypeScript / Node.js">
         ```typescript
-        import { lumiqtrace } from "@lumiqtrace/sdk";
+        import { lumiqtrace, withAgent } from "@lumiqtrace/sdk";
         import OpenAI from "openai";
 
-        lumiqtrace.init({ apiKey: "lqt_your_key_here" });
+        lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY!, environment: "production" });
         const openai = lumiqtrace.wrapOpenAI(new OpenAI());
 
-        const response = await openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: [
-            { role: "system", content: "You are a helpful assistant." },
-            { role: "user", content: "Explain LLM observability in one sentence." },
-          ],
-        });
+        // Wrap as an agent to see the full agent trace
+        await withAgent(
+          {
+            name: "SupportAgent",
+            role: "specialist",
+            tools: [{ name: "lookup_order", description: "Look up an order by ID" }],
+          },
+          async (agent) => {
+            agent.logPlan(["Understand request", "Look up order", "Draft response"]);
 
-        console.log(response.choices[0].message.content);
+            const order = await agent.traceTool(
+              "lookup_order",
+              { id: "ORD-123" },
+              () => Promise.resolve({ status: "delivered", total: 49.99 })
+            );
+
+            const response = await openai.chat.completions.create({
+              model: "gpt-4o",
+              messages: [
+                { role: "system", content: "You are a helpful support agent." },
+                { role: "user", content: `Order ${order}: help me with my refund.` },
+              ],
+            });
+
+            console.log(response.choices[0].message.content);
+          }
+        );
         ```
-
-        The SDK automatically captures the model, input and output token counts, latency, cost (computed from the token pricing table), finish reason, and any tool calls. Nothing changes about how you write your application logic.
       </Tab>
       <Tab title="Python">
         ```python
         import lumiqtrace
+        from lumiqtrace import with_agent
         import openai
 
         lumiqtrace.init(api_key="lqt_your_key_here", environment="production")
         lumiqtrace.patch_openai()
 
         client = openai.OpenAI()
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": "Explain LLM observability in one sentence."},
-            ],
-        )
 
-        print(response.choices[0].message.content)
+        with with_agent(
+            name="SupportAgent",
+            role="specialist",
+            tools=[{"name": "lookup_order", "description": "Look up an order"}],
+        ) as agent:
+            agent.log_plan(["Understand request", "Look up order", "Draft response"])
+
+            order = agent.trace_tool(
+                "lookup_order",
+                {"id": "ORD-123"},
+                lambda: {"status": "delivered", "total": 49.99},
+            )
+
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "You are a helpful support agent."},
+                    {"role": "user", "content": f"Order {order}: help with refund."},
+                ],
+            )
+            print(response.choices[0].message.content)
         ```
+      </Tab>
+      <Tab title="Just an LLM call">
+        If you're not using agents yet, a bare LLM call is traced automatically:
+
+        ```typescript
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [{ role: "user", content: "Explain agent observability." }],
+        });
+        ```
+
+        You'll still see the full span: model, tokens, cost, latency, and finish reason.
       </Tab>
     </Tabs>
   </Step>
 
   <Step title="View your trace in the dashboard">
-    Open [app.lumiqtrace.com](https://app.lumiqtrace.com) and navigate to your project. Within a few seconds you should see your trace appear in the **Requests** view. Click any row to open the trace detail view with the full span flame graph.
-
-    The overview dashboard shows:
-    - **Total requests** and trend vs. the previous period
-    - **Total cost** in USD
-    - **Average latency** in milliseconds
-    - **Error rate** as a percentage
+    Open [app.lumiqtrace.com](https://app.lumiqtrace.com) and navigate to your project. Within a few seconds you should see your trace in the **Traces** view. Click any row to open the flame graph — each bar is a span (agent scope, tool call, LLM call) with full cost and latency breakdown.
 
     <Tip>
-      If you don't see your trace after 10–15 seconds, check that your API key is correct and that your process did not exit before the SDK flushed its batch. You can call `await lumiqtrace.getClient().flush()` (TypeScript) or `lumiqtrace.get_client().flush()` (Python) at the end of your script to force an immediate flush.
+      If no trace appears after 15 seconds, check that your API key is correct and that your process did not exit before the SDK flushed. Call `await lumiqtrace.getClient().flush()` (TypeScript) or `lumiqtrace.flush()` (Python) at the end of your script to force an immediate flush. See the [Serverless guide](/guides/serverless) if running in Lambda or Vercel.
     </Tip>
   </Step>
 </Steps>
 
 ## SDK initialization options
 
-The `lumiqtrace.init()` call accepts the following options:
+<Tabs>
+  <Tab title="TypeScript">
+    | Option | Type | Default | Description |
+    |---|---|---|---|
+    | `apiKey` | `string` | **Required** | Your project API key. Must start with `lqt_`. |
+    | `environment` | `string` | `"production"` | Tags every event with an environment label. |
+    | `storePrompts` | `boolean` | `false` | Store full prompt and completion text. Off by default for privacy. |
+    | `sampleRate` | `number` | `1.0` | Fraction of calls to trace (0.0–1.0). |
+    | `redactKeys` | `string[]` | Common PII keys | Tag/metadata keys whose values are redacted before sending. |
+    | `debug` | `boolean` | `false` | Log SDK activity to the console. |
+    | `batchSize` | `number` | `50` | Events to collect before flushing. |
+    | `flushInterval` | `number` | `2000` | Milliseconds between automatic flushes. |
+    | `baseURL` | `string` | `https://api.lumiqtrace.com` | Override for self-hosted deployments. |
+  </Tab>
+  <Tab title="Python">
+    | Option | Type | Default | Description |
+    |---|---|---|---|
+    | `api_key` | `str` | **Required** | Your project API key. |
+    | `environment` | `str` | `"production"` | Environment label. |
+    | `store_prompts` | `bool` | `False` | Store prompt and completion text. |
+    | `sample_rate` | `float` | `1.0` | Fraction of calls to trace. |
+    | `redact_keys` | `list[str]` | Common PII keys | Keys to redact from tags/metadata. |
+    | `debug` | `bool` | `False` | Log flush activity to stdout. |
+    | `batch_size` | `int` | `50` | Events per flush. |
+    | `flush_interval` | `float` | `2.0` | Seconds between automatic flushes. |
+    | `base_url` | `str` | `https://api.lumiqtrace.com` | Override for self-hosted deployments. |
+  </Tab>
+</Tabs>
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `apiKey` | `string` | **Required** | Your project API key. Must start with `lqt_`. |
-| `environment` | `string` | `"production"` | Tags every event with an environment label. Use this to separate `development`, `staging`, and `production` data in the dashboard. |
-| `storePrompts` | `boolean` | `false` | When `true`, the full prompt text is sent to LumiqTrace and stored. When `false` (the default), only a SHA-256 hash of the prompt is stored. |
-| `sampleRate` | `number` | `1.0` | Fraction of calls to trace, from `0.0` to `1.0`. Set to `0.1` to trace 10% of calls in high-traffic environments. |
-| `debug` | `boolean` | `false` | Logs SDK errors and flush activity to the console. Useful during initial integration. |
-| `batchSize` | `number` | `50` | Number of events to collect before flushing to the API. |
-| `flushInterval` | `number` | `2000` | Milliseconds between automatic flushes. |
+## Tracing other frameworks
 
-<Note>
-  In Python, option names use `snake_case`: `api_key`, `store_prompts`, `sample_rate`, `flush_interval`, `batch_size`.
-</Note>
-
-## Wrapping other providers
-
-The SDK includes wrappers for Anthropic and Google Gemini using the same pattern:
-
-```typescript
-import { lumiqtrace } from "@lumiqtrace/sdk";
-import Anthropic from "@anthropic-ai/sdk";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-lumiqtrace.init({ apiKey: "lqt_your_key_here" });
-
-const anthropic = lumiqtrace.wrapAnthropic(new Anthropic());
-const google = lumiqtrace.wrapGoogle(new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY!));
-```
-
-For LangChain, use the callback handler instead:
-
-```typescript
-import { LumiqtraceCallbackHandler } from "@lumiqtrace/sdk";
-import { ChatOpenAI } from "@langchain/openai";
-
-const llm = new ChatOpenAI({ callbacks: [new LumiqtraceCallbackHandler()] });
-```
+<CardGroup cols={2}>
+  <Card title="Anthropic" icon="cpu" href="/sdk/typescript#anthropic">
+    ```typescript
+    const anthropic = lumiqtrace.wrapAnthropic(new Anthropic());
+    ```
+  </Card>
+  <Card title="Google Gemini" icon="sparkles" href="/sdk/typescript#google-generative-ai">
+    ```typescript
+    const google = lumiqtrace.wrapGoogle(new GoogleGenerativeAI(key));
+    ```
+  </Card>
+  <Card title="LangChain" icon="link" href="/sdk/langchain">
+    Full chain, agent executor, and retriever tracing via callback handler.
+  </Card>
+  <Card title="Google ADK" icon="bot" href="/sdk/google-adk">
+    Multi-agent tracing with `instrumentADK`, `wrapADKRunner`, or `wrapADKAgent`.
+  </Card>
+</CardGroup>

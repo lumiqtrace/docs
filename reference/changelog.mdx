@@ -1,0 +1,146 @@
+---
+title: "Changelog"
+description: "Release history for the LumiqTrace platform and SDKs."
+---
+
+## SDK v1.5.0
+
+**Released:** April 2026
+
+<CardGroup cols={2}>
+  <Card title="New" icon="plus-circle">
+    - `wrapBedrock()` wrapper for AWS Bedrock `converse` API
+    - `wrapMistral()` wrapper for Mistral AI
+    - `wrapGroq()` wrapper for Groq
+    - `wrapLiteLLM()` helper for LiteLLM proxy
+    - `disableConfigSync` option to opt out of remote config propagation
+  </Card>
+  <Card title="Improved" icon="arrow-up-circle">
+    - `wrapGoogle()` now captures `cachedContentTokenCount` and `thoughtsTokenCount` from Gemini 2.5 responses
+    - `LumiqtraceCallbackHandler` Python handler now supports async LangChain chains natively
+    - Flush latency reduced by ~30% via HTTP/2 keep-alive reuse
+  </Card>
+</CardGroup>
+
+**Bug fixes:**
+- Fixed a race condition in the batch engine that could cause duplicate events on process exit under high load
+- Fixed TTFT not being captured for Anthropic streaming responses when `stream_options` was not set
+- Fixed Python `with_agent` context manager not propagating to nested sync functions
+
+---
+
+## SDK v1.4.2
+
+**Released:** March 2026
+
+**Bug fixes:**
+- Fixed `cost_usd` being computed as `NaN` for models with zero-cost cached tokens when `cached_tokens` was `undefined`
+- Fixed `wrapADKRunner` not capturing tool spans when the ADK tool result was an empty string
+- Fixed TypeScript types for `withLumiqtraceContext` not accepting `Promise<void>` return type
+
+---
+
+## SDK v1.4.0
+
+**Released:** February 2026
+
+<CardGroup cols={2}>
+  <Card title="New" icon="plus-circle">
+    - Config propagation — SDK now reads `cv` from ingest responses and fetches updated config from `/v1/sdk/config` automatically
+    - `replaceDefaultRedactKeys` option for PII redaction
+    - `PromptClient.clearCache(name?)` — clear cache for a specific prompt or all prompts
+    - Google ADK: `instrumentADK()` convenience function wraps agent + runner in one call
+  </Card>
+  <Card title="Improved" icon="arrow-up-circle">
+    - `wrapGoogle()` now supports the new Gemini 2.5 `thoughtsTokenCount` field for reasoning token tracking
+    - `LumiqtraceCallbackHandler` for LangChain now automatically propagates `userId` and `sessionId` to all nested LLM spans
+    - Python SDK: `patch_openai()` now patches `AsyncOpenAI` streaming responses for TTFT capture
+  </Card>
+</CardGroup>
+
+---
+
+## SDK v1.3.0
+
+**Released:** January 2026
+
+**New:**
+- `wrapOpenRouter()` — OpenRouter wrapper using OpenAI SDK interface
+- `initOTel()` — standalone OpenTelemetry setup function
+- `enableOTel` and `otelEndpoint` options in `init()` for dual-export to OTEL + LumiqTrace
+- Python: `@lumiqtrace.trace` decorator for sync and async functions
+
+**Improved:**
+- `withAgent` now accepts an optional `agentId` parameter for stable agent identity across runs
+- Batch engine now uses gzip compression by default (was opt-in), reducing payload size by ~75%
+
+---
+
+## Platform v2.3.0
+
+**Released:** April 2026
+
+**New features:**
+- **LumiqPilot config propagation** — Pilot can now push SDK config changes (model overrides, sample rate, guardrail toggles) to running instances in real time
+- **Incident auto-remediation** — Scale plan: configure remediation rules that Pilot applies automatically when an incident opens
+- **Simulation batch runs** — compare multiple prompt versions in parallel against the same dataset
+- **Session view** — new dashboard page grouping LLM calls by `session_id`
+
+**Improvements:**
+- Anomaly detection now uses 14-day rolling baseline (was 7 days) for fewer false positives
+- Cost Optimizer refresh cadence: Scale plan moved from daily to near-real-time (sub-1-hour)
+- Trace flame graph now renders `guardrail` spans inline with their parent LLM span
+
+**Bug fixes:**
+- Fixed alert history table not loading for projects with >10K alert events
+- Fixed `POST /v1/otel` accepting spans without `gen_ai.*` attributes but dropping them silently — they now appear in traces as generic spans
+
+---
+
+## Platform v2.2.0
+
+**Released:** February 2026
+
+**New features:**
+- **Evaluations dashboard** — LLM-as-judge evaluator definitions, auto-run mode, trend charts, per-trace scores
+- **Simulations** — dataset management, scenario configuration, batch runs with side-by-side comparison
+- **Guardrails dashboard** — execution history, per-policy trigger frequency, AI-powered guardrail types (toxicity, prompt injection, custom judge)
+- **Prompt management dashboard** — version history, label management, protected labels, dependency graph
+
+**Improvements:**
+- NLQ result summaries now use streaming for sub-second time-to-first-word
+- Dashboard overview page loads 2× faster via improved ClickHouse query plans
+
+---
+
+## SDK v1.2.0
+
+**Released:** December 2025
+
+**New:**
+- `GuardrailBlockedError` class with `phase`, `results` properties
+- Guardrails support on `wrapAnthropic`, `wrapGoogle`, and `LumiqtraceCallbackHandler`
+- `PromptClient` — fetch, compile, create, and manage versioned prompts at runtime
+- Python: `PromptClient` with same API as TypeScript version
+
+**Breaking change:**
+- `wrapOpenAI(client, options)` second argument changed from `WrapOptions | undefined` to a full options object. If you were passing `undefined`, no change needed.
+
+---
+
+## SDK v1.0.0
+
+**Released:** October 2025
+
+Initial public release.
+
+- `initLumiqtrace()` / `lumiqtrace.init()` singleton initialization
+- `wrapOpenAI()`, `wrapAnthropic()`, `wrapGoogle()` provider wrappers
+- `withLumiqtraceContext()` — async context propagation
+- `withAgent()` — multi-agent tracing with plan, tool, and handoff spans
+- `startSpan()` — manual span API with eval score attachment
+- `LumiqtraceCallbackHandler` for LangChain (TypeScript + Python)
+- `wrapADKAgent()` and `wrapADKRunner()` for Google ADK
+- PII redaction with configurable key list
+- Batch engine with gzip NDJSON transport
+- Python SDK parity: all TypeScript features available in Python

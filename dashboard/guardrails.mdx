@@ -1,0 +1,122 @@
+---
+title: "Guardrails — configure content safety policies"
+sidebarTitle: "Guardrails"
+description: "Create and manage guardrail policies in the LumiqTrace dashboard to block, redact, or flag unsafe LLM inputs and outputs without redeploying your application."
+---
+
+The Guardrails page is where you define the content safety policies that the LumiqTrace SDK enforces at runtime. Policies are evaluated server-side on every check request from the SDK — you can update, enable, or disable them without touching your application code.
+
+<Note>
+  Guardrail policies are available on the **Pro** plan and above. The Free plan has no access to guardrail configuration.
+</Note>
+
+## How guardrails work
+
+When your SDK is initialized with `guardrails: true` on a provider wrapper, it sends a check request to `POST /v1/guardrails/check` before the LLM call (pre-check) and after the LLM response (post-check). The backend evaluates all active policies for your project against the content and returns a verdict.
+
+The SDK receives the verdict and either:
+
+- **Allows** the call to proceed normally
+- **Blocks** it by throwing a `GuardrailBlockedError`
+- **Redacts** sensitive content and substitutes the cleaned text
+- **Warns** (logs the trigger but allows the call through)
+
+See the [SDK guardrails guide](/sdk/guardrails) for how to handle these verdicts in your application code.
+
+## Creating a guardrail
+
+<Steps>
+  <Step title="Open the Guardrails page">
+    Navigate to **Guardrails** in the left sidebar.
+  </Step>
+  <Step title="Click New guardrail">
+    The guardrail creation dialog opens.
+  </Step>
+  <Step title="Name the guardrail">
+    Give it a descriptive name that explains what it protects against, e.g. `block-competitor-mentions` or `toxicity-filter`.
+  </Step>
+  <Step title="Choose a guardrail type">
+    Select the type of check to run:
+
+    | Type | What it does |
+    |------|-------------|
+    | **Keyword block** | Blocks content containing specific words or phrases |
+    | **Regex block** | Blocks content matching a regular expression |
+    | **Topic block** | Uses an AI classifier to block content about a topic |
+    | **PII detection** | Detects and optionally redacts personal information |
+    | **Toxicity filter** | AI-powered toxicity scoring with configurable threshold |
+    | **Prompt injection** | Detects attempts to hijack the LLM's instructions |
+    | **Custom LLM judge** | Runs your own scoring prompt against the content |
+  </Step>
+  <Step title="Configure the policy">
+    Fill in the type-specific settings. For keyword and regex types, enter the patterns. For AI-powered types, set the sensitivity threshold (0–1). For custom LLM judge, write your evaluation prompt.
+  </Step>
+  <Step title="Set the action">
+    Choose what happens when the guardrail triggers:
+
+    - **Block** — reject the request and throw `GuardrailBlockedError` in the SDK
+    - **Redact** — remove the matched content and use the cleaned text
+    - **Warn** — allow the request but log the trigger
+  </Step>
+  <Step title="Choose check phases">
+    Select whether the policy applies to pre-LLM checks (the prompt), post-LLM checks (the completion), or both.
+  </Step>
+  <Step title="Save">
+    Click **Save**. The policy activates immediately — all subsequent SDK check requests will include this policy.
+  </Step>
+</Steps>
+
+## Managing guardrails
+
+The main Guardrails page shows a table of all configured policies:
+
+| Column | Description |
+|--------|-------------|
+| Name | The policy identifier |
+| Type | The guardrail mechanism |
+| Action | What happens on trigger |
+| Phases | Pre, post, or both |
+| Triggers (7d) | How many times it fired in the last 7 days |
+| Status | Enabled / disabled toggle |
+
+Use the **Status** toggle to disable a guardrail without deleting it. Disabled guardrails do not run and do not consume any processing quota.
+
+## Execution history
+
+Click any guardrail row to open its detail view, which includes:
+
+- A trend chart of trigger frequency over time
+- A table of the most recent executions, each with:
+  - Timestamp
+  - The project and user ID that triggered it
+  - The matched content (redacted to show only the triggering portion, not the full prompt)
+  - The action taken (blocked, redacted, warned)
+  - Latency of the check itself
+
+<Tip>
+  If a guardrail is triggering frequently, review the execution history to see whether the triggers are genuine policy violations or false positives. You can adjust the keyword list or sensitivity threshold without redeploying.
+</Tip>
+
+## Latency impact
+
+Guardrail checks add latency to your LLM calls. The check runs synchronously before (and optionally after) the LLM call. Typical check latency:
+
+| Guardrail type | Typical latency |
+|---------------|----------------|
+| Keyword / Regex | < 5ms |
+| PII detection | 20–50ms |
+| AI-powered (toxicity, topic, injection) | 80–200ms |
+| Custom LLM judge | 200–800ms |
+
+<Warning>
+  Custom LLM judge guardrails call an AI model for every check. In latency-sensitive production environments, prefer keyword or regex types for hot paths and reserve LLM judge for lower-frequency operations.
+</Warning>
+
+## Plan limits
+
+| Plan | Active guardrails | Monthly check requests |
+|------|------------------|----------------------|
+| Free | None | — |
+| Pro | 5 | 10,000 |
+| Team | 20 | 100,000 |
+| Scale | Unlimited | Unlimited |

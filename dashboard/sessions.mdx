@@ -1,0 +1,126 @@
+---
+title: "Sessions — track multi-turn user conversations"
+sidebarTitle: "Sessions"
+description: "Use session IDs to group multiple LLM calls from a single user conversation and analyze session-level cost, latency, and turn count in the Sessions dashboard."
+---
+
+A session groups all LLM calls from a single user conversation into a single unit of analysis. Where the Traces view shows individual LLM API calls, the Sessions view shows full conversations — how many turns they had, how much they cost in total, and how long they lasted from first to last message.
+
+## Setting up session tracking
+
+To use the Sessions view, pass a `sessionId` when initializing your trace context. The session ID should be stable for the duration of a conversation — typically a UUID you generate when the conversation starts.
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    import { lumiqtrace, withLumiqtraceContext } from "@lumiqtrace/sdk";
+    import OpenAI from "openai";
+
+    lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+    const openai = lumiqtrace.wrapOpenAI(new OpenAI());
+
+    // Generate once per conversation
+    const sessionId = crypto.randomUUID();
+
+    async function handleMessage(userId: string, message: string) {
+      return withLumiqtraceContext(
+        { userId, sessionId },
+        async () => {
+          const response = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [{ role: "user", content: message }],
+          });
+          return response.choices[0].message.content;
+        }
+      );
+    }
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    import lumiqtrace
+    from lumiqtrace import with_lumiqtrace_context
+    import uuid
+
+    lumiqtrace.init(api_key="lqt_your_api_key_here")
+    lumiqtrace.patch_openai()
+
+    import openai
+    client = openai.OpenAI()
+
+    session_id = str(uuid.uuid4())  # Generated once per conversation
+
+    def handle_message(user_id: str, message: str) -> str:
+        with with_lumiqtrace_context(user_id=user_id, session_id=session_id):
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": message}],
+            )
+            return response.choices[0].message.content
+    ```
+  </Tab>
+</Tabs>
+
+All LLM calls made within the same `sessionId` are linked together in the Sessions view, regardless of which trace they belong to.
+
+## The sessions list
+
+The Sessions page shows a paginated table of all sessions in your project:
+
+| Column | Description |
+|--------|-------------|
+| Session ID | The identifier you provided |
+| User ID | The user associated with the session (if set) |
+| Started | When the first LLM call in this session was made |
+| Duration | Time from first to last call |
+| Turns | Number of LLM calls in the session |
+| Cost | Total cost across all calls in the session |
+| Status | Whether the session ended with any errors |
+
+Sort by **Cost** to find your most expensive sessions. Sort by **Turns** to find conversations with the highest round-trip count — a candidate for prompt optimization.
+
+### Filtering sessions
+
+Use the filter bar to narrow the list by:
+
+- **Date range** — see sessions from a specific period
+- **User ID** — view all sessions for a specific user
+- **Status** — filter to sessions with errors
+- **Minimum turns** — find longer conversations
+
+## Session detail
+
+Click any session row to open its detail view. The detail view shows:
+
+### Conversation timeline
+
+A sequential list of every LLM call in the session, in chronological order. Each entry shows the model, latency, token count, and cost for that call. Click any entry to open the full trace flame graph.
+
+### Session metrics
+
+- **Total cost** — cumulative spend across all calls
+- **Total tokens** — combined input and output tokens
+- **Average latency per turn** — mean response time across all calls
+- **Error count** — number of calls that ended in an error state
+
+### User attribution
+
+If the session was associated with a `userId`, the user's full session history is available from a link at the top of the detail view. This lets you see all sessions for a user in one place — useful for investigating a user complaint or analysing high-value customers.
+
+## Cost attribution by session
+
+In addition to per-model cost breakdown, the Sessions view helps answer questions like:
+
+- "Which types of conversations cost the most?"
+- "Are there sessions where users are burning through tokens disproportionately?"
+- "What is my average cost per conversation?"
+
+<Tip>
+  Sort sessions by cost and examine the top 10 most expensive sessions. If they share a common pattern — a specific feature, user segment, or prompt style — that's where to focus optimization effort first.
+</Tip>
+
+## Plan requirements
+
+Session tracking is available on all plans. The Sessions page is populated automatically as long as your SDK passes `sessionId` in its trace context. No additional configuration is required.
+
+Data retention for session data follows your plan's retention window — 7 days on Free, 30 days on Pro, 90 days on Team, 1 year on Scale.

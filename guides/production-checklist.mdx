@@ -1,0 +1,150 @@
+---
+title: "Production checklist"
+sidebarTitle: "Production checklist"
+description: "Everything to verify before shipping LumiqTrace to production: API key security, sampling, flush handling, alert rules, and data privacy settings."
+---
+
+Run through this checklist before deploying LumiqTrace to a production environment. Each item addresses a common failure mode found in production integrations.
+
+---
+
+## SDK configuration
+
+<Steps>
+  <Step title="API key is in a secret manager, not hardcoded">
+    Your `lqt_` API key should never appear in source code or committed to version control. Set it as an environment variable and read it at runtime:
+
+    ```typescript
+    lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+    ```
+
+    Verify with: `grep -r "lqt_" src/` — this should return no matches.
+  </Step>
+
+  <Step title="environment is set to 'production'">
+    Explicitly set the environment tag so your data is filtered correctly in the dashboard and anomaly detection runs on the right baseline:
+
+    ```typescript
+    lumiqtrace.init({
+      apiKey: process.env.LUMIQTRACE_API_KEY!,
+      environment: "production",
+    });
+    ```
+  </Step>
+
+  <Step title="storePrompts policy is decided">
+    `storePrompts` defaults to `false` — prompt text is never stored. If you enable it, you are storing user inputs and model outputs. Review your:
+
+    - Privacy policy (does it cover LLM input storage?)
+    - Data retention window (matches your plan's setting)
+    - Any regulatory requirements (GDPR, HIPAA, SOC 2)
+
+    If in doubt, leave it `false` and use `tags` for structured metadata instead.
+  </Step>
+
+  <Step title="sampleRate is tuned for your traffic volume">
+    At high traffic, 100% tracing generates a lot of events and cost. Consider sampling:
+
+    | Monthly LLM calls | Recommended sampleRate |
+    |------------------|----------------------|
+    | < 50K | 1.0 (trace everything) |
+    | 50K – 500K | 0.5 – 1.0 |
+    | 500K – 5M | 0.1 – 0.25 |
+    | > 5M | 0.05 – 0.1 |
+
+    ```typescript
+    lumiqtrace.init({ apiKey: "lqt_...", sampleRate: 0.25 });
+    ```
+  </Step>
+
+  <Step title="Flush is called before process exit (serverless only)">
+    If you deploy to Lambda, Vercel Functions, Netlify, or similar short-lived environments, verify `flush()` is called at the end of every handler. See the [Serverless guide](/guides/serverless).
+  </Step>
+
+  <Step title="redactKeys covers all PII fields in your tags">
+    Review every `tags` key your application sends. Add any fields that contain sensitive data to `redactKeys`:
+
+    ```typescript
+    lumiqtrace.init({
+      apiKey: "lqt_...",
+      redactKeys: ["email", "phone", "ip", "address"],
+    });
+    ```
+  </Step>
+
+  <Step title="userId and sessionId are set on user-facing calls">
+    These enable per-user cost breakdown and session replay. Make sure they are set in `withLumiqtraceContext` for all requests that involve authenticated users:
+
+    ```typescript
+    return withLumiqtraceContext({ userId: req.user.id, sessionId: req.session.id }, async () => {
+      return callLLM(userMessage);
+    });
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Dashboard setup
+
+<Steps>
+  <Step title="At least one alert rule is configured">
+    Before going live, create a baseline error-rate alert so you get notified if something breaks immediately after deployment:
+
+    - Metric: `error_rate`
+    - Condition: `>` 0.05 (5%)
+    - Window: 15 minutes
+    - Notify: your on-call email or Slack webhook
+  </Step>
+
+  <Step title="Cost alert is configured">
+    Unexpected LLM code paths can cost hundreds of dollars in minutes. Create a cost alert:
+
+    - Metric: `cost_usd`
+    - Condition: `>` your daily budget
+    - Window: 60 minutes
+  </Step>
+
+  <Step title="Run the Cost Optimizer once before launch">
+    Navigate to **AI Hub → Cost Optimizer** and review the recommendations before launch. Model-switching opportunities are easiest to implement before traffic hits the feature.
+  </Step>
+
+  <Step title="Verify traces are appearing in the right project">
+    After deploying, make a test LLM call and verify it appears in the **Traces** view of your production project — not staging. Confirm the `environment` tag shows `production`.
+  </Step>
+</Steps>
+
+---
+
+## Security
+
+<Steps>
+  <Step title="One API key per service">
+    Avoid sharing a single API key across multiple services or environments. Use separate keys so you can rotate or revoke one without affecting others. See [API Keys](/account/api-keys).
+  </Step>
+
+  <Step title="API key rotation schedule is documented">
+    Add API key rotation to your team's security calendar — every 90 days is a reasonable cadence for most teams. Document the rotation process so the next person doesn't have to figure it out from scratch.
+  </Step>
+
+  <Step title="Team members have the right roles">
+    Review **Settings → Team** and confirm that engineers who only need to view the dashboard have the `Member` role, not `Admin`. Admins can modify alert rules, guardrails, and SDK config.
+  </Step>
+</Steps>
+
+---
+
+## Quick verification after deployment
+
+After deploying, run this end-to-end check:
+
+1. Make one LLM call through your application
+2. Wait 10–15 seconds
+3. Open the LumiqTrace dashboard and navigate to **Traces**
+4. Confirm the trace appears with `environment: production`, the correct model, non-zero token counts, and a non-zero cost
+
+If the trace is missing, enable `debug: true` in your SDK and redeploy — the console output will show whether events are being created and whether flushes are succeeding.
+
+<Check>
+  All items checked? Your LumiqTrace integration is production-ready.
+</Check>

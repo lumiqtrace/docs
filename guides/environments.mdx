@@ -1,0 +1,157 @@
+---
+title: "Environments — separate production, staging, and development data"
+sidebarTitle: "Environments"
+description: "Use the environment tag and project structure to cleanly separate LLM traces from different deployment environments in LumiqTrace."
+---
+
+LumiqTrace gives you two ways to separate data from different environments: the `environment` tag and separate projects. Understanding when to use each — and how they interact — saves you from mixing staging noise into production dashboards or accidentally billing production usage against a test quota.
+
+## The `environment` tag
+
+Every event sent by the SDK carries an `environment` string. It defaults to `"production"` but you should always set it explicitly from your deployment configuration:
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    lumiqtrace.init({
+      apiKey: process.env.LUMIQTRACE_API_KEY!,
+      environment: process.env.NODE_ENV === "production" ? "production" : "staging",
+    });
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    import os
+    import lumiqtrace
+
+    lumiqtrace.init(
+        api_key=os.environ["LUMIQTRACE_API_KEY"],
+        environment=os.getenv("ENVIRONMENT", "development"),
+    )
+    ```
+  </Tab>
+</Tabs>
+
+The environment string is free-form — you can use `"production"`, `"staging"`, `"development"`, `"canary"`, `"load-test"`, or any value that makes sense for your deploy pipeline.
+
+### Filtering by environment in the dashboard
+
+Every filter bar in the dashboard includes an **Environment** dropdown. Select `staging` to isolate staging data from production metrics, or select `All` to see everything together.
+
+<Tip>
+  When you're debugging a new feature, set `environment: "development"` locally. This keeps your development noise out of the production Cost page and anomaly detector, which both operate on the `production` environment by default.
+</Tip>
+
+---
+
+## One project vs. multiple projects
+
+The environment tag filters data _within_ a project. The alternative is separate projects — one per environment. Here's how to choose:
+
+| Approach | Best for | Tradeoffs |
+|----------|----------|-----------|
+| **Single project + environment tag** | Most teams | Simpler setup, one API key, shared alert rules and evaluators |
+| **Separate project per environment** | Strict data isolation, different retention policies per env | Multiple API keys to manage, alert rules duplicated across projects |
+| **Separate project for load testing** | High-volume synthetic traffic | Keeps load-test events from inflating your monthly quota |
+
+### When to use separate projects
+
+Use a separate project when you need:
+
+- **Different data retention** — keep staging data for 7 days while production data is kept for 90 days
+- **Separate billing** — different teams own different projects and need separate usage reporting
+- **True data isolation** — environment tag filtering is UI-only; both environments still share the same project quota
+- **Load testing** — synthetic traffic inflates your monthly event quota and skews your anomaly baselines
+
+### When to stay in one project
+
+Use environment tags (single project) when:
+
+- Your team is small and shares a single dashboard
+- You want alert rules, guardrails, and evaluators to automatically apply to all environments
+- You're on the Free or Pro plan and don't want to manage multiple API keys
+
+---
+
+## Recommended setup for most teams
+
+```
+Organization: AcmeCorp
+├── Project: acme-production   (API key: lqt_prod_...)
+│   └── environment: "production"
+│
+└── Project: acme-staging      (API key: lqt_staging_...)
+    └── environment: "staging"
+```
+
+Each project gets its own API key. Set the key from environment variables — never hardcode:
+
+```bash
+# .env.production
+LUMIQTRACE_API_KEY=lqt_prod_xxxxxxxxxxxxxxxxxx
+LUMIQTRACE_ENV=production
+
+# .env.staging
+LUMIQTRACE_API_KEY=lqt_staging_xxxxxxxxxxxxxxxxxx
+LUMIQTRACE_ENV=staging
+```
+
+```typescript
+lumiqtrace.init({
+  apiKey: process.env.LUMIQTRACE_API_KEY!,
+  environment: process.env.LUMIQTRACE_ENV ?? "development",
+});
+```
+
+---
+
+## Keeping local development clean
+
+By default the SDK sends events even in local development. This is useful for debugging but can pollute your dashboard. Two options:
+
+**Option 1 — Disable in development:**
+```typescript
+lumiqtrace.init({
+  apiKey: process.env.LUMIQTRACE_API_KEY ?? "lqt_local",
+  environment: "development",
+  // Only send if we have a real API key
+  sampleRate: process.env.LUMIQTRACE_API_KEY ? 1.0 : 0.0,
+});
+```
+
+**Option 2 — Lower sample rate for development:**
+```typescript
+const isDev = process.env.NODE_ENV === "development";
+
+lumiqtrace.init({
+  apiKey: process.env.LUMIQTRACE_API_KEY!,
+  environment: isDev ? "development" : "production",
+  sampleRate: isDev ? 0.1 : 1.0, // only sample 10% in dev
+});
+```
+
+---
+
+## Tagging for feature-level filtering
+
+Beyond environments, the `tags` field lets you segment by feature, team, or experiment — without creating separate projects:
+
+```typescript
+await withLumiqtraceContext(
+  {
+    userId: req.user.id,
+    sessionId: req.session.id,
+    tags: {
+      feature: "checkout-assistant",    // which feature triggered this call
+      team: "payments",                  // which team owns this code
+      experiment: "gpt4o-vs-mini-ab",   // A/B experiment identifier
+      release: "v2.4.1",                // deployment version
+    },
+  },
+  async () => {
+    await openai.chat.completions.create({ ... });
+  }
+);
+```
+
+You can filter and group by these tags in the Traces view, and use them in alert rule conditions to scope an alert to a specific feature.

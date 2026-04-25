@@ -1,0 +1,141 @@
+---
+title: "PII redaction — protect sensitive data in traces"
+sidebarTitle: "PII redaction"
+description: "Configure LumiqTrace's built-in PII redaction to automatically remove sensitive values from tags and metadata before they are sent to the ingest endpoint."
+---
+
+LumiqTrace's PII redaction feature automatically removes sensitive values from event metadata before they leave your application. When redaction is enabled, any tag or metadata field whose key matches a configured list has its value replaced with `"[REDACTED]"` — the key is preserved so you can still see which field contained sensitive data, but the value never reaches LumiqTrace servers.
+
+<Note>
+  PII redaction applies to the `tags` and `metadata` fields on events. It does **not** apply to prompt text or completion text — those are controlled by the separate `storePrompts` option and are not stored by default.
+</Note>
+
+## Default redacted keys
+
+The SDK ships with a default list of keys that are always redacted, regardless of configuration:
+
+```
+password, secret, token, api_key, apikey, auth, authorization,
+access_token, refresh_token, private_key, credential, ssn,
+social_security, credit_card, card_number, cvv
+```
+
+These defaults are applied even if you do not configure `redactKeys` explicitly.
+
+## Adding custom keys
+
+Pass additional key names in the `redactKeys` array at initialization. These are merged with the default list.
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    import { lumiqtrace } from "@lumiqtrace/sdk";
+
+    lumiqtrace.init({
+      apiKey: process.env.LUMIQTRACE_API_KEY!,
+      redactKeys: ["email", "phone", "address", "ip_address", "dob"],
+    });
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    import lumiqtrace
+
+    lumiqtrace.init(
+        api_key="lqt_your_api_key_here",
+        redact_keys=["email", "phone", "address", "ip_address", "dob"],
+    )
+    ```
+  </Tab>
+</Tabs>
+
+With this configuration, if your application sends a trace with `tags: { email: "user@example.com" }`, the SDK will transmit `tags: { email: "[REDACTED]" }` instead.
+
+## How matching works
+
+Matching is **case-insensitive** and checks both exact key names and common nested-key patterns:
+
+- `"password"` matches `password`, `Password`, `PASSWORD`
+- `"api_key"` matches `api_key`, `apiKey`, `API_KEY`
+
+Matching is applied to the flat key names in `tags` and `metadata` objects. Nested objects are flattened one level deep before matching.
+
+## Replacing the default key list
+
+To use only your own list — completely replacing the defaults — set `replaceDefaultRedactKeys: true`:
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    lumiqtrace.init({
+      apiKey: process.env.LUMIQTRACE_API_KEY!,
+      redactKeys: ["ssn", "account_number"],
+      replaceDefaultRedactKeys: true,
+    });
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    lumiqtrace.init(
+        api_key="lqt_your_api_key_here",
+        redact_keys=["ssn", "account_number"],
+        replace_default_redact_keys=True,
+    )
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  Replacing the defaults removes protection for common sensitive field names like `password` and `token`. Only do this if you are confident your custom list covers all sensitive fields your application may produce.
+</Warning>
+
+## Example: verifying redaction
+
+The following example shows how redaction behaves at runtime. The `email` and `phone` fields are replaced; `feature` and `plan` pass through unchanged.
+
+```typescript
+import { lumiqtrace, withLumiqtraceContext } from "@lumiqtrace/sdk";
+import OpenAI from "openai";
+
+lumiqtrace.init({
+  apiKey: process.env.LUMIQTRACE_API_KEY!,
+  redactKeys: ["email", "phone"],
+  debug: true, // logs redacted events to console during testing
+});
+
+const openai = lumiqtrace.wrapOpenAI(new OpenAI());
+
+await withLumiqtraceContext(
+  {
+    userId: "user_123",
+    tags: {
+      email: "alice@example.com",   // will be redacted → "[REDACTED]"
+      phone: "+1-555-0100",         // will be redacted → "[REDACTED]"
+      feature: "chat",              // passes through
+      plan: "pro",                  // passes through
+    },
+  },
+  async () => {
+    await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: "Hello" }],
+    });
+  }
+);
+```
+
+## Redaction and `storePrompts`
+
+Redaction and prompt storage are independent controls:
+
+| Setting | What it protects |
+|---------|-----------------|
+| `redactKeys` | Values in `tags` and `metadata` fields |
+| `storePrompts: false` (default) | Prompt text and completion text — never sent |
+| `storePrompts: true` | Prompt text is stored; redaction does NOT apply to it |
+
+If you enable `storePrompts`, you are responsible for ensuring your prompts do not contain PII. Redaction only applies to structured tag and metadata fields, not to the free-form prompt string.
+
+<Tip>
+  A common pattern is to keep `storePrompts: false` (the default) and use `tags` for structured metadata with redaction configured for any PII fields. This gives you full trace context without ever sending prompt text off-device.
+</Tip>

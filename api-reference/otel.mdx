@@ -1,0 +1,120 @@
+---
+title: "OpenTelemetry ingest"
+sidebarTitle: "OpenTelemetry"
+description: "Send OpenTelemetry-formatted traces to LumiqTrace using the OTLP HTTP protocol. Use this endpoint when integrating with OpenTelemetry-instrumented codebases."
+---
+
+LumiqTrace accepts OpenTelemetry trace data over the standard OTLP HTTP protocol at `POST /v1/otel`. This lets you send traces from any OpenTelemetry-instrumented application — including those using the official OpenTelemetry SDKs for Node.js, Python, Go, Java, and other languages.
+
+<Note>
+  If you are using the LumiqTrace SDK, use the native ingest endpoint instead (`POST /v1/ingest`). The OpenTelemetry endpoint is for applications already instrumented with OTel that want to route traces to LumiqTrace without migrating to the native SDK.
+</Note>
+
+## Endpoint
+
+```
+POST https://api.lumiqtrace.com/v1/otel
+```
+
+The endpoint accepts the full OTLP JSON and Protobuf formats.
+
+**Authentication:** `x-api-key` header (your project API key)
+
+## Configuring your OTel exporter
+
+Set your OTLP exporter to target the LumiqTrace endpoint and include your API key as a header.
+
+<Tabs>
+  <Tab title="Node.js">
+    ```typescript
+    import { NodeSDK } from "@opentelemetry/sdk-node";
+    import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+
+    const exporter = new OTLPTraceExporter({
+      url: "https://api.lumiqtrace.com/v1/otel",
+      headers: {
+        "x-api-key": process.env.LUMIQTRACE_API_KEY!,
+      },
+    });
+
+    const sdk = new NodeSDK({ traceExporter: exporter });
+    sdk.start();
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
+    exporter = OTLPSpanExporter(
+        endpoint="https://api.lumiqtrace.com/v1/otel",
+        headers={"x-api-key": "lqt_your_api_key_here"},
+    )
+
+    provider = TracerProvider()
+    provider.add_span_processor(BatchSpanProcessor(exporter))
+    trace.set_tracer_provider(provider)
+    ```
+  </Tab>
+  <Tab title="Environment variables">
+    If your OTel SDK reads from environment variables, set:
+
+    ```bash
+    OTEL_EXPORTER_OTLP_ENDPOINT=https://api.lumiqtrace.com/v1/otel
+    OTEL_EXPORTER_OTLP_HEADERS=x-api-key=lqt_your_api_key_here
+    ```
+  </Tab>
+</Tabs>
+
+## Using `initOTel` from the LumiqTrace SDK
+
+If you are using the LumiqTrace TypeScript SDK, you can enable the OTel exporter alongside the native exporter in one call:
+
+```typescript
+import { lumiqtrace } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({
+  apiKey: process.env.LUMIQTRACE_API_KEY!,
+  enableOTel: true,
+  otelEndpoint: "https://api.lumiqtrace.com/v1/otel",
+  otelServiceName: "my-llm-service",
+});
+```
+
+With `enableOTel: true`, the SDK sends spans to both the native ingest endpoint and the OTel exporter simultaneously.
+
+## Supported signal types
+
+| Signal | Support |
+|--------|---------|
+| Traces (spans) | Full support |
+| Metrics | Not currently accepted |
+| Logs | Not currently accepted |
+
+## How OTel spans appear in LumiqTrace
+
+OTel spans are mapped to the LumiqTrace event schema as follows:
+
+| OTel attribute | LumiqTrace field |
+|----------------|-----------------|
+| `span.name` | `operation` |
+| `gen_ai.system` | `provider` |
+| `gen_ai.request.model` | `model` |
+| `gen_ai.usage.prompt_tokens` | `input_tokens` |
+| `gen_ai.usage.completion_tokens` | `output_tokens` |
+| `gen_ai.response.finish_reasons` | `finish_reason` |
+| `traceId` | `trace_id` |
+| `spanId` | `span_id` |
+| `parentSpanId` | `parent_span_id` |
+
+Spans that do not include `gen_ai.*` attributes are still ingested and appear in the trace view as non-LLM spans.
+
+## Response
+
+**202 Accepted** — Spans accepted for processing.
+
+**401** — Missing or invalid `x-api-key`.
+
+**429** — Monthly event quota exceeded.

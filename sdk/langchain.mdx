@@ -1,0 +1,287 @@
+---
+title: "LangChain integration"
+sidebarTitle: "LangChain"
+description: "Trace LangChain chains, agents, tools, and retrievers automatically using LumiqtraceCallbackHandler — covering TypeScript and Python with full span-level detail."
+---
+
+The `LumiqtraceCallbackHandler` integrates with LangChain's callback system to automatically capture every LLM call, tool invocation, chain step, and retrieval operation as linked spans in LumiqTrace. You pass it once and it instruments the entire execution graph — no changes to your chain or agent logic are needed.
+
+## How it works
+
+LangChain calls lifecycle methods on every registered `BaseCallbackHandler` at each stage of execution. The LumiqTrace handler subscribes to:
+
+| LangChain event | What LumiqTrace captures |
+|----------------|--------------------------|
+| `handleLLMStart` / `handleLLMEnd` | Model, provider, latency, tokens, cost, finish reason |
+| `handleChainStart` / `handleChainEnd` | Chain type, input/output, duration |
+| `handleToolStart` / `handleToolEnd` | Tool name, input args, output, duration |
+| `handleRetrieverStart` / `handleRetrieverEnd` | Query, retrieved document count, duration |
+| `handleAgentAction` | Tool selected, reasoning, input |
+
+All events share the same `trace_id` so you see the entire chain as a single flame graph in the Traces view.
+
+---
+
+## TypeScript
+
+### Installation
+
+```bash
+npm install @lumiqtrace/sdk @langchain/core @langchain/openai
+```
+
+### Basic usage
+
+```typescript
+import { lumiqtrace, LumiqtraceCallbackHandler } from "@lumiqtrace/sdk";
+import { ChatOpenAI } from "@langchain/openai";
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+const handler = new LumiqtraceCallbackHandler();
+
+const llm = new ChatOpenAI({
+  model: "gpt-4o",
+  callbacks: [handler],
+});
+
+const response = await llm.invoke([
+  new SystemMessage("You are a helpful assistant."),
+  new HumanMessage("Summarize the history of the internet in three sentences."),
+]);
+
+console.log(response.content);
+```
+
+### Chains
+
+Pass the handler to `RunnableSequence` or any chain using the `config` argument:
+
+```typescript
+import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { StringOutputParser } from "@langchain/core/output_parsers";
+import { RunnableSequence } from "@langchain/core/runnables";
+
+const prompt = ChatPromptTemplate.fromMessages([
+  ["system", "You are an expert summarizer. Be concise."],
+  ["human", "{topic}"],
+]);
+
+const chain = RunnableSequence.from([
+  prompt,
+  new ChatOpenAI({ model: "gpt-4o" }),
+  new StringOutputParser(),
+]);
+
+const result = await chain.invoke(
+  { topic: "quantum computing" },
+  { callbacks: [new LumiqtraceCallbackHandler()] }
+);
+```
+
+### Agents and tools
+
+The handler captures the full agent loop: plan → tool call → observation → next plan. Each iteration appears as linked spans.
+
+```typescript
+import { createOpenAIFunctionsAgent, AgentExecutor } from "langchain/agents";
+import { DynamicTool } from "@langchain/core/tools";
+import { ChatOpenAI } from "@langchain/openai";
+import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
+import { lumiqtrace, LumiqtraceCallbackHandler } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+const tools = [
+  new DynamicTool({
+    name: "get-weather",
+    description: "Get current weather for a city",
+    func: async (city: string) => `Weather in ${city}: 22°C, sunny`,
+  }),
+];
+
+const prompt = ChatPromptTemplate.fromMessages([
+  ["system", "You are a helpful assistant with access to tools."],
+  ["human", "{input}"],
+  new MessagesPlaceholder("agent_scratchpad"),
+]);
+
+const agent = await createOpenAIFunctionsAgent({
+  llm: new ChatOpenAI({ model: "gpt-4o" }),
+  tools,
+  prompt,
+});
+
+const executor = new AgentExecutor({
+  agent,
+  tools,
+  callbacks: [new LumiqtraceCallbackHandler()],
+});
+
+const result = await executor.invoke({ input: "What's the weather in Tokyo?" });
+```
+
+### RAG with retriever tracing
+
+```typescript
+import { MemoryVectorStore } from "langchain/vectorstores/memory";
+import { OpenAIEmbeddings } from "@langchain/openai";
+import { createRetrievalChain } from "langchain/chains/retrieval";
+import { createStuffDocumentsChain } from "langchain/chains/combine_documents";
+import { Document } from "@langchain/core/documents";
+
+const vectorStore = await MemoryVectorStore.fromDocuments(
+  [new Document({ pageContent: "LangChain is a framework for building LLM apps." })],
+  new OpenAIEmbeddings()
+);
+
+const retriever = vectorStore.asRetriever();
+
+const combineDocsChain = await createStuffDocumentsChain({
+  llm: new ChatOpenAI({ model: "gpt-4o" }),
+  prompt: ChatPromptTemplate.fromMessages([
+    ["system", "Answer based on context: {context}"],
+    ["human", "{input}"],
+  ]),
+});
+
+const retrievalChain = await createRetrievalChain({
+  retriever,
+  combineDocsChain,
+});
+
+// All retrieval and LLM calls appear as linked spans
+const result = await retrievalChain.invoke(
+  { input: "What is LangChain?" },
+  { callbacks: [new LumiqtraceCallbackHandler()] }
+);
+```
+
+---
+
+## Python
+
+### Installation
+
+```bash
+pip install lumiqtrace langchain-core langchain-openai
+```
+
+### Basic usage
+
+```python
+import lumiqtrace
+from lumiqtrace.integrations.langchain_handler import LumiqtraceCallbackHandler
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage, SystemMessage
+
+lumiqtrace.init(api_key="lqt_your_api_key_here")
+
+handler = LumiqtraceCallbackHandler()
+
+llm = ChatOpenAI(model="gpt-4o", callbacks=[handler])
+
+response = llm.invoke([
+    SystemMessage(content="You are a helpful assistant."),
+    HumanMessage(content="What is the Turing test?"),
+])
+print(response.content)
+```
+
+### Chains
+
+```python
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "Summarize the following topic in two sentences."),
+    ("human", "{topic}"),
+])
+
+chain = prompt | ChatOpenAI(model="gpt-4o") | StrOutputParser()
+
+result = chain.invoke(
+    {"topic": "large language models"},
+    config={"callbacks": [LumiqtraceCallbackHandler()]},
+)
+```
+
+### Agents
+
+```python
+from langchain.agents import AgentExecutor, create_openai_functions_agent
+from langchain_core.tools import Tool
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+def get_weather(city: str) -> str:
+    return f"Weather in {city}: 22°C, sunny"
+
+tools = [Tool(name="get-weather", func=get_weather, description="Get weather for a city")]
+
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a helpful assistant with access to tools."),
+    ("human", "{input}"),
+    MessagesPlaceholder("agent_scratchpad"),
+])
+
+agent = create_openai_functions_agent(
+    llm=ChatOpenAI(model="gpt-4o"),
+    tools=tools,
+    prompt=prompt,
+)
+
+executor = AgentExecutor(
+    agent=agent,
+    tools=tools,
+    callbacks=[LumiqtraceCallbackHandler()],
+)
+
+result = executor.invoke({"input": "What's the weather in Paris?"})
+```
+
+---
+
+## How traces look in the dashboard
+
+A LangChain agent run produces a trace like this in the flame graph:
+
+```
+AgentExecutor (chain)          ─────────────────────────────── 1.8s
+  ├── ChatOpenAI (llm)         ──────────────── 820ms  gpt-4o
+  │     → tool_calls: [get-weather]
+  ├── get-weather (tool)       ──── 12ms
+  └── ChatOpenAI (llm)         ──────── 640ms  gpt-4o
+        → finish_reason: stop
+```
+
+Each row is a span. The total trace cost is the sum of both LLM spans. Tool call spans show the tool name and execution time but have no token cost.
+
+<Tip>
+  To associate a LangChain trace with a user session, wrap the chain invocation in `withLumiqtraceContext`:
+
+  ```typescript
+  import { withLumiqtraceContext } from "@lumiqtrace/sdk";
+
+  return withLumiqtraceContext({ userId, sessionId }, () =>
+    chain.invoke({ input: userMessage }, { callbacks: [handler] })
+  );
+  ```
+</Tip>
+
+---
+
+## Guardrails with LangChain
+
+Pass guardrail options to `LumiqtraceCallbackHandler` to enable pre/post content checks on LLM calls made by the chain:
+
+```typescript
+const handler = new LumiqtraceCallbackHandler({
+  guardrails: { pre: true, post: true, failClosed: false },
+});
+```
+
+```python
+handler = LumiqtraceCallbackHandler(guardrails={"pre": True, "post": True})
+```

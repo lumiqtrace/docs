@@ -85,6 +85,129 @@ async def main():
 asyncio.run(main())
 ```
 
+## Tracing other providers
+
+The Python SDK includes patches for Anthropic, Google Generative AI, and OpenRouter. Call the appropriate patch function after `init()`.
+
+### Anthropic
+
+```python
+import anthropic
+import lumiqtrace
+
+lumiqtrace.init(api_key="lqt_your_api_key_here")
+lumiqtrace.patch_anthropic()
+
+client = anthropic.Anthropic()
+message = client.messages.create(
+    model="claude-sonnet-4-6",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Explain monads in plain English."}],
+)
+print(message.content[0].text)
+```
+
+### Google Generative AI
+
+```python
+import google.generativeai as genai
+import lumiqtrace
+
+lumiqtrace.init(api_key="lqt_your_api_key_here")
+lumiqtrace.patch_google()
+
+genai.configure(api_key="your_google_api_key")
+model = genai.GenerativeModel("gemini-2.5-flash")
+response = model.generate_content("What is quantum entanglement?")
+print(response.text)
+```
+
+### OpenRouter
+
+```python
+import openai
+import lumiqtrace
+
+lumiqtrace.init(api_key="lqt_your_api_key_here")
+lumiqtrace.patch_openrouter()
+
+client = openai.OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key="your_openrouter_api_key",
+)
+response = client.chat.completions.create(
+    model="anthropic/claude-sonnet-4-6",
+    messages=[{"role": "user", "content": "Hello from OpenRouter!"}],
+)
+print(response.choices[0].message.content)
+```
+
+## Context enrichment
+
+Use `with_lumiqtrace_context` to attach a `user_id`, `session_id`, or custom `tags` to all traces generated within a function scope.
+
+```python
+import lumiqtrace
+from lumiqtrace import with_lumiqtrace_context
+
+lumiqtrace.init(api_key="lqt_your_api_key_here")
+lumiqtrace.patch_openai()
+
+import openai
+client = openai.OpenAI()
+
+def handle_request(user_id: str, session_id: str, message: str) -> str:
+    with with_lumiqtrace_context(user_id=user_id, session_id=session_id, tags={"feature": "chat"}):
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": message}],
+        )
+        return response.choices[0].message.content
+```
+
+<Tip>
+  Set `user_id` and `session_id` on every request that involves a logged-in user. This enables per-user cost breakdown and session replay in the LumiqTrace dashboard.
+</Tip>
+
+## Prompt management
+
+The `PromptClient` fetches versioned prompts from the LumiqTrace prompt library at runtime. Results are cached locally for 5 minutes.
+
+```python
+from lumiqtrace import PromptClient, get_client
+import lumiqtrace
+
+lumiqtrace.init(api_key="lqt_your_api_key_here")
+lumiqtrace.patch_openai()
+
+prompts = PromptClient(get_client())
+
+# Fetch by label
+prompt = prompts.get("support-reply", label="production")
+
+# Compile variables
+text = prompts.compile(prompt, {
+    "customer_name": "Alex",
+    "order_id": "ORD-7821",
+})
+
+import openai
+client = openai.OpenAI()
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[
+        {"role": "system", "content": text},
+        {"role": "user", "content": "I need help with my order."},
+    ],
+)
+```
+
+See the [TypeScript prompt management docs](/sdk/prompt-management) for the full API reference — the Python `PromptClient` exposes the same methods: `get`, `list`, `create`, `update_labels`, `compile`, and `clear_cache`.
+
+<Note>
+  In Python, method and parameter names use `snake_case`: `update_labels`, `clear_cache`, `prompt_type`, `commit_message`.
+</Note>
+
 ## Tracing functions with `@lumiqtrace.trace`
 
 Use the `@lumiqtrace.trace` decorator to trace any sync or async function as a custom span. The `name` parameter sets the operation name in the trace view.

@@ -1,0 +1,148 @@
+/* ─── LumiqTrace docs — component-level styling only ───────────────────────── */
+/*                                                                               */
+/* IMPORTANT: We do NOT override any layout backgrounds (sidebar, navbar, page   */
+/* header, hero). Those are controlled by the theme and must stay consistent.    */
+/* This file only touches: cards, code, callouts, tables, steps, tabs, links.   */
+
+/* ── Brand tokens ───────────────────────────────────────────────────────────── */
+:root {
+  --lq-cyan: #00d4ff;
+  --lq-green: #18e299;
+  --lq-radius: 10px;
+  --lq-ease: 150ms ease;
+}
+
+/* ── Links ──────────────────────────────────────────────────────────────────── */
+.prose a {
+  color: var(--lq-cyan);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(0, 212, 255, 0.3);
+  transition: border-color var(--lq-ease);
+}
+
+.prose a:hover {
+  border-bottom-color: var(--lq-cyan);
+}
+
+/* ── Inline code ────────────────────────────────────────────────────────────── */
+.prose :not(pre) > code {
+  background: rgba(0, 212, 255, 0.08) !important;
+  color: #00d4ff !important;
+  border: 1px solid rgba(0, 212, 255, 0.18) !important;
+  border-radius: 4px !important;
+  padding: 1px 5px !important;
+  font-size: 0.875em !important;
+}
+
+.light .prose :not(pre) > code {
+  background: rgba(0, 180, 220, 0.07) !important;
+  color: #007a9e !important;
+}
+
+/* ── Code blocks ────────────────────────────────────────────────────────────── */
+pre {
+  border-radius: var(--lq-radius) !important;
+}
+
+/* ── Cards ──────────────────────────────────────────────────────────────────── */
+[class*="Card"],
+[data-card] {
+  border-radius: var(--lq-radius) !important;
+  transition: transform var(--lq-ease),
+              box-shadow var(--lq-ease),
+              border-color var(--lq-ease) !important;
+}
+
+[class*="Card"]:hover,
+[data-card]:hover {
+  transform: translateY(-2px);
+  border-color: rgba(0, 212, 255, 0.3) !important;
+  box-shadow: 0 4px 20px rgba(0, 212, 255, 0.07) !important;
+}
+
+/* ── Callout boxes ──────────────────────────────────────────────────────────── */
+[data-callout="note"] {
+  border-left-color: #00d4ff !important;
+}
+
+[data-callout="tip"] {
+  border-left-color: #18e299 !important;
+}
+
+[data-callout="warning"] {
+  border-left-color: #f59e0b !important;
+}
+
+[data-callout="check"] {
+  border-left-color: #18e299 !important;
+}
+
+/* ── Tables ─────────────────────────────────────────────────────────────────── */
+.prose table {
+  border-radius: 8px !important;
+  overflow: hidden !important;
+}
+
+/* ── Steps — brand the step number ─────────────────────────────────────────── */
+[class*="Step"] [class*="number"],
+[data-step-number] {
+  background: linear-gradient(135deg, #00d4ff, #18e299) !important;
+  color: #0a0a0a !important;
+  font-weight: 700 !important;
+}
+
+/* ── Tabs — active tab in brand color ───────────────────────────────────────── */
+[role="tab"][aria-selected="true"] {
+  color: #00d4ff !important;
+  border-bottom-color: #00d4ff !important;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 212, 255, 0.2);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 212, 255, 0.35);
+}
+
+/* ── Typography ─────────────────────────────────────────────────────────────── */
+.prose h1 {
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+
+.prose h2 {
+  letter-spacing: -0.015em;
+  scroll-margin-top: 80px;
+}
+
+/* ── Frames (image borders) ─────────────────────────────────────────────────── */
+[class*="Frame"],
+[data-frame] {
+  border-radius: var(--lq-radius) !important;
+  overflow: hidden !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* ── Accordions ─────────────────────────────────────────────────────────────── */
+[class*="Accordion"],
+[data-accordion] {
+  border-radius: 8px !important;
+  transition: border-color var(--lq-ease) !important;
+}
+
+[class*="Accordion"]:hover,
+[data-accordion]:hover {
+  border-color: rgba(0, 212, 255, 0.2) !important;
+}

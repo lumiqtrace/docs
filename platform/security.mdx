@@ -1,0 +1,101 @@
+---
+title: "Security — authentication, isolation, and data handling"
+sidebarTitle: "Security"
+description: "LumiqTrace's security architecture: API key design, session authentication, multi-tenant isolation at the database layer, PII handling, and audit logging."
+---
+
+This page describes how LumiqTrace is designed to protect your data and your users' data. It covers the authentication model, tenant isolation, secrets management, PII handling, and the audit trail.
+
+## Authentication model
+
+LumiqTrace uses two authentication mechanisms depending on the request type.
+
+### API key authentication (SDK → ingest)
+
+Your SDK authenticates to the `POST /v1/ingest` endpoint using a project-scoped API key in the `x-api-key` header. API keys:
+
+- Are project-scoped — a key can only write events to the project it was generated for
+- Start with the prefix `lqt_` followed by 64 random hex characters
+- Are stored as bcrypt hashes — LumiqTrace never stores your key in plaintext
+- Are cached in Redis with a configurable TTL (default 60 seconds) to reduce database lookups
+- Have a 24-hour grace period when rotated, allowing smooth rollover without downtime
+
+### Session authentication (dashboard API)
+
+Dashboard API calls authenticate using Bearer tokens issued by the auth service. Sessions:
+
+- Are issued by [Better Auth](https://www.better-auth.com), an open-source, self-hosted auth framework
+- Are stored as opaque tokens validated against a Redis session cache
+- Expire after 7 days (configurable via `SESSION_TTL_SECONDS`)
+- Support email/password, OAuth (GitHub, Google), and magic link sign-in
+
+## Multi-tenant isolation
+
+LumiqTrace uses a defense-in-depth approach to tenant isolation.
+
+### Application layer
+
+All API routes include a tenant check: the authenticated user must be a member of the organization that owns the requested resource. Cross-tenant access at the application layer is not possible — every query is scoped to `organizationId`.
+
+### Database layer — PostgreSQL
+
+Row-level security (RLS) is enabled on all tables containing tenant data. Each query includes a `WHERE org_id = $current_org` predicate enforced by PostgreSQL, not just application code.
+
+### Database layer — ClickHouse
+
+ClickHouse row policies are applied per project: `CREATE ROW POLICY ON llm_events USING project_id = {project_id}`. This ensures that even if a query bug bypassed the application layer, ClickHouse would not return data from a different project.
+
+## Secrets management
+
+- API keys are stored as bcrypt hashes in PostgreSQL — the raw key is never persisted after the initial display to the user
+- The `BETTER_AUTH_SECRET` signs all session tokens — rotate it to invalidate all active sessions immediately
+- Provider API keys (Anthropic, OpenAI, etc.) are stored as environment variables and never exposed via any API endpoint
+
+## PII handling
+
+By default, LumiqTrace does not store prompt text or completion text. The SDK computes a SHA-256 hash of each prompt (`prompt_hash`) for deduplication, but the raw text is never sent unless you explicitly set `storePrompts: true`.
+
+When you enable prompt storage, you take responsibility for ensuring the prompts do not contain PII you are not authorized to process. LumiqTrace's built-in PII redaction applies to the structured `tags` and `metadata` fields — not to free-form prompt text. See [PII redaction](/sdk/pii-redaction) for details.
+
+For the `tags` and `metadata` fields, the SDK applies key-based redaction before events are transmitted. The default redact list covers common sensitive key names (`password`, `token`, `api_key`, etc.). You can extend it or replace it at initialization.
+
+## Audit logging
+
+Every write action performed in the LumiqTrace dashboard — project creation, API key rotation, alert changes, guardrail changes, LumiqPilot actions, team membership changes, billing updates — is written to an immutable audit log.
+
+Each audit log entry records:
+
+- Timestamp (UTC)
+- Acting user ID and email
+- Organization and project scope
+- Action type (e.g., `project.api_key_rotated`, `alert.created`, `sdk_config.updated`)
+- Before and after state for update operations
+- Source IP address and user-agent
+
+The audit log is available in **Settings → Audit Log**. On the Scale plan, it can be exported as CSV.
+
+<Note>
+  The audit log is append-only — entries cannot be modified or deleted, even by organization owners.
+</Note>
+
+## Rate limiting
+
+The ingest endpoint is protected by a sliding-window rate limiter:
+
+- 1,000 requests per minute per API key (ingest)
+- 300 requests per minute per session (dashboard API)
+- 20 requests per hour per organization (AI features)
+
+Rate limit state is maintained in Redis. Responses include a `Retry-After` header when a limit is exceeded.
+
+## Data retention and deletion
+
+Data is retained according to your plan's retention window (7 days free, up to 1 year on Scale). Expired events are deleted by a scheduled job that runs nightly.
+
+To delete all data immediately:
+- **Project data:** Delete the project from **Settings → Projects**. All associated ClickHouse events are queued for deletion within 24 hours.
+- **Organization data:** Delete the organization from **Settings → General → Danger zone**. All data across all projects is deleted.
+
+## Responsible disclosure
+
+If you discover a security vulnerability in LumiqTrace, please report it to security@lumiqtrace.com. We aim to respond within 48 hours and to patch confirmed vulnerabilities within 14 days.

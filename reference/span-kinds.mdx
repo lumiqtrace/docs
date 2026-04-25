@@ -1,0 +1,129 @@
+---
+title: "Span kinds reference"
+sidebarTitle: "Span kinds"
+description: "Complete reference for all LumiqTrace span kinds — what each represents, when it is emitted, and how it appears in the trace flame graph and agent registry."
+---
+
+Every span in LumiqTrace has a `span_kind` field that describes the type of operation it represents. The span kind controls how the span is rendered in the flame graph, which icon it gets in the trace detail view, and how it is counted in agent analytics. Understanding span kinds is essential for building multi-agent systems that look correct in the dashboard.
+
+## Complete span kind reference
+
+<CardGroup cols={2}>
+  <Card title="llm" icon="cpu">
+    A direct call to a language model API. This is the most common span kind. Set automatically by all provider wrappers (`wrapOpenAI`, `wrapAnthropic`, `wrapGoogle`, etc.).
+  </Card>
+  <Card title="agent" icon="bot">
+    The execution scope of a single agent. Created by `withAgent()` in TypeScript, `with_agent()` in Python, and the ADK/LangChain integrations automatically. Contains all child spans produced during the agent's run.
+  </Card>
+  <Card title="tool" icon="wrench">
+    A single tool or function invocation by an agent. Created by `agent.traceTool()` or automatically by the LangChain and ADK integrations when a tool is called.
+  </Card>
+  <Card title="planning" icon="list-checks">
+    A planning step created by `agent.logPlan()`. Records the steps the agent intends to take before executing them. Useful for debugging agent reasoning.
+  </Card>
+  <Card title="handoff" icon="arrow-right">
+    An agent-to-agent delegation. Created by `agent.delegateTo()` or automatically by multi-agent frameworks. Links to the target agent span in the trace tree.
+  </Card>
+  <Card title="retriever" icon="search">
+    A document retrieval operation (vector search, keyword search, hybrid). Set on manual spans in RAG pipelines via `startSpan({ span_kind: "retriever" })` or automatically by the LangChain retriever handler.
+  </Card>
+  <Card title="guardrail" icon="shield">
+    A guardrail check execution. Set automatically when the SDK's guardrail client makes a check request. Shows pre/post phase, action taken (allowed/blocked/redacted), and latency.
+  </Card>
+  <Card title="general" icon="circle">
+    A generic custom operation that doesn't fit another category. The default for manually created spans that don't specify a `span_kind`.
+  </Card>
+</CardGroup>
+
+---
+
+## Flame graph rendering
+
+Each span kind is rendered differently in the trace flame graph:
+
+| Span kind | Color (dark theme) | Icon | Indentation |
+|-----------|-------------------|------|-------------|
+| `llm` | Cyan (`#00d4ff`) | CPU chip | Based on nesting depth |
+| `agent` | Purple | Bot | Creates a group header |
+| `tool` | Amber | Wrench | Child of agent span |
+| `planning` | Slate | List | Child of agent span |
+| `handoff` | Blue | Arrow | Child of agent span |
+| `retriever` | Green | Search | Child of LLM or general span |
+| `guardrail` | Orange | Shield | Before/after LLM span |
+| `general` | Gray | Circle | Based on nesting depth |
+
+---
+
+## Setting span kind manually
+
+When creating a manual span with `startSpan()`, set the `span_kind` explicitly:
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    import { startSpan } from "@lumiqtrace/sdk";
+
+    // Retrieval span
+    const { span } = startSpan({
+      name: "vector-search",
+      span_kind: "retriever",
+      provider: "custom",
+    });
+
+    try {
+      const docs = await vectorStore.search(query, { topK: 5 });
+      await span.end({ status: "success" });
+      return docs;
+    } catch (err) {
+      await span.end({ status: "error", error_message: String(err) });
+      throw err;
+    }
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    from lumiqtrace import start_span
+
+    with start_span(name="vector-search", span_kind="retriever", provider="custom") as span:
+        docs = vector_store.search(query, top_k=5)
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## How span kinds appear in the agent registry
+
+The **Agents** section of the dashboard uses span kinds to build its agent registry:
+
+- Spans with `span_kind: "agent"` appear as agent nodes
+- Their `parent_span_id` is used to build the coordinator-specialist hierarchy
+- `tool` spans are aggregated under their parent agent to build the tool inventory
+- `handoff` spans are used to draw delegation arrows between agents
+
+To have your agent appear correctly in the registry, always set `agentRole: "coordinator"` on orchestrators and `agentRole: "specialist"` on sub-agents.
+
+<Frame>
+  <img src="/images/agent-registry.png" alt="Agent registry view in LumiqTrace showing coordinator and specialist hierarchy" />
+</Frame>
+
+---
+
+## SpanKind in the event schema
+
+The `span_kind` field is part of the `LumiqEvent` schema sent to the ingest endpoint. When building a custom integration (not using an SDK wrapper), include it explicitly:
+
+```json
+{
+  "event_id": "...",
+  "trace_id": "...",
+  "span_id": "...",
+  "span_kind": "tool",
+  "provider": "custom",
+  "model": "custom",
+  "operation": "tool-call",
+  ...
+}
+```
+
+Valid values: `"llm"`, `"agent"`, `"tool"`, `"planning"`, `"handoff"`, `"retriever"`, `"guardrail"`, `"general"`.

@@ -1,0 +1,221 @@
+---
+title: "Environment variables reference"
+sidebarTitle: "Environment variables"
+description: "Complete reference for all environment variables used by the LumiqTrace API server, including database connections, auth configuration, AI providers, and integrations."
+---
+
+All environment variables are read by the API server at startup. There is no hot-reload — restart the server after changing any variable. The `.env.example` file in the repository root documents all variables with example values.
+
+## Required variables
+
+These variables must be set for the server to start.
+
+<ParamField body="DATABASE_URL" type="string" required>
+  PostgreSQL connection string. Format: `postgresql://user:password@host:port/database`
+
+  ```bash
+  DATABASE_URL="postgresql://lumiq:lumiq@localhost:5432/lumiqtrace"
+  ```
+</ParamField>
+
+<ParamField body="CLICKHOUSE_HOST" type="string" required>
+  ClickHouse HTTP endpoint. Include the protocol and port.
+
+  ```bash
+  CLICKHOUSE_HOST="http://localhost:8123"
+  ```
+</ParamField>
+
+<ParamField body="CLICKHOUSE_USER" type="string" required>
+  ClickHouse username.
+</ParamField>
+
+<ParamField body="CLICKHOUSE_PASSWORD" type="string" required>
+  ClickHouse password. Can be empty for local development.
+</ParamField>
+
+<ParamField body="CLICKHOUSE_DB" type="string" required>
+  ClickHouse database name.
+
+  ```bash
+  CLICKHOUSE_DB="lumiqtrace"
+  ```
+</ParamField>
+
+<ParamField body="REDIS_URL" type="string" required>
+  Redis connection string.
+
+  ```bash
+  REDIS_URL="redis://localhost:6379"
+  ```
+</ParamField>
+
+<ParamField body="BETTER_AUTH_SECRET" type="string" required>
+  Random secret used to sign authentication tokens. Must be at least 32 characters.
+
+  ```bash
+  BETTER_AUTH_SECRET="a-very-long-random-string-of-at-least-32-characters"
+  ```
+
+  Generate a suitable value: `openssl rand -hex 32`
+</ParamField>
+
+<ParamField body="BETTER_AUTH_URL" type="string" required>
+  The base URL of the API server, used for auth callback URLs.
+
+  ```bash
+  BETTER_AUTH_URL="https://api.yourdomain.com"
+  ```
+</ParamField>
+
+<ParamField body="CORS_ORIGIN" type="string" required>
+  Allowed CORS origins. Comma-separate multiple values.
+
+  ```bash
+  CORS_ORIGIN="https://app.yourdomain.com"
+  # Or for multiple origins:
+  CORS_ORIGIN="https://app.yourdomain.com,https://staging.yourdomain.com"
+  ```
+</ParamField>
+
+## AI model providers
+
+At least one AI provider key is required to use LumiqPilot, Cost Optimizer, Anomaly Detection, and Root Cause Analysis.
+
+<ParamField body="ANTHROPIC_API_KEY" type="string">
+  Anthropic API key. Used for LumiqPilot (cost optimization reasoning) and root cause analysis.
+
+  ```bash
+  ANTHROPIC_API_KEY="sk-ant-..."
+  ```
+</ParamField>
+
+<ParamField body="GOOGLE_GENERATIVE_AI_API_KEY" type="string">
+  Google Generative AI API key. Used for LumiqPilot (function calling), anomaly explanations, and NLQ.
+
+  ```bash
+  GOOGLE_GENERATIVE_AI_API_KEY="AIza..."
+  ```
+</ParamField>
+
+<ParamField body="OPENAI_API_KEY" type="string">
+  OpenAI API key. Used as a fallback AI provider for some features.
+
+  ```bash
+  OPENAI_API_KEY="sk-..."
+  ```
+</ParamField>
+
+<ParamField body="OPENROUTER_API_KEY" type="string">
+  OpenRouter API key. Used for overview summaries via free models.
+
+  ```bash
+  OPENROUTER_API_KEY="sk-or-..."
+  ```
+</ParamField>
+
+## Email
+
+<ParamField body="RESEND_API_KEY" type="string">
+  Resend API key for transactional email (account verification, alert notifications, team invitations). Without this, emails will not be sent.
+
+  ```bash
+  RESEND_API_KEY="re_..."
+  ```
+</ParamField>
+
+<ParamField body="EMAIL_FROM" type="string" default="noreply@lumiqtrace.com">
+  The sender address for transactional emails.
+
+  ```bash
+  EMAIL_FROM="noreply@yourdomain.com"
+  ```
+</ParamField>
+
+## Payments (Polar.sh)
+
+These variables are only required if you want to use the billing integration.
+
+<ParamField body="POLAR_ACCESS_TOKEN" type="string">
+  Polar.sh API access token.
+</ParamField>
+
+<ParamField body="POLAR_ORGANIZATION_ID" type="string">
+  Your Polar.sh organization ID.
+</ParamField>
+
+<ParamField body="POLAR_WEBHOOK_SECRET" type="string">
+  Webhook signing secret from Polar.sh. Used to verify that webhook payloads originate from Polar.
+</ParamField>
+
+<ParamField body="POLAR_FREE_PLAN_PRODUCT_ID" type="string">
+  Polar product ID for the Free plan.
+</ParamField>
+
+<ParamField body="POLAR_PRO_PLAN_PRODUCT_ID" type="string">
+  Polar product ID for the Pro plan.
+</ParamField>
+
+<ParamField body="POLAR_TEAM_PLAN_PRODUCT_ID" type="string">
+  Polar product ID for the Team plan.
+</ParamField>
+
+<ParamField body="POLAR_SCALE_PLAN_PRODUCT_ID" type="string">
+  Polar product ID for the Scale plan.
+</ParamField>
+
+## LumiqPilot self-tracing
+
+<ParamField body="LUMIQPILOT_API_KEY" type="string">
+  A LumiqTrace project API key used to trace LumiqPilot's own AI calls. When set, Pilot's model calls appear in your traces under the `lumiqpilot` agent tag.
+</ParamField>
+
+<ParamField body="LUMIQPILOT_PROJECT_ID" type="string">
+  The project ID to associate with LumiqPilot self-traces.
+</ParamField>
+
+## Web app (frontend)
+
+These variables are read by the Next.js web app container (`apps/web`). Create a separate `.env.web` or `.env.local` file for the web app.
+
+<ParamField body="NEXT_PUBLIC_API_URL" type="string" required>
+  Base URL of the API server, used by the frontend for all API calls.
+
+  ```bash
+  NEXT_PUBLIC_API_URL="https://api.yourdomain.com"
+  ```
+</ParamField>
+
+<ParamField body="NEXT_PUBLIC_APP_URL" type="string" required>
+  Public URL of the web app itself. Used for auth callback URLs and email links.
+
+  ```bash
+  NEXT_PUBLIC_APP_URL="https://app.yourdomain.com"
+  ```
+</ParamField>
+
+<ParamField body="NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY" type="string">
+  Stripe publishable key for the billing UI. Only required if you are using the Polar/Stripe billing integration.
+</ParamField>
+
+## Optional server configuration
+
+<ParamField body="PORT" type="number" default="3001">
+  Port the API server listens on.
+</ParamField>
+
+<ParamField body="LOG_LEVEL" type="string" default="info">
+  Logging verbosity. Accepted values: `fatal`, `error`, `warn`, `info`, `debug`, `trace`.
+</ParamField>
+
+<ParamField body="RATE_LIMIT_MAX" type="number" default="1000">
+  Maximum ingest requests per minute per API key.
+</ParamField>
+
+<ParamField body="SESSION_TTL_SECONDS" type="number" default="604800">
+  Session token lifetime in seconds. Default is 7 days.
+</ParamField>
+
+<ParamField body="API_KEY_CACHE_TTL_SECONDS" type="number" default="60">
+  How long to cache API key lookups in Redis before re-validating against the database.
+</ParamField>

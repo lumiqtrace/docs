@@ -1,0 +1,135 @@
+---
+title: "Simulations — test LLM behavior before shipping"
+sidebarTitle: "Simulations"
+description: "Run your LLM application against a dataset of test cases to catch regressions before they reach production. Compare outputs, scores, and latency across prompt versions."
+---
+
+Simulations let you run your LLM configuration against a prepared dataset of test cases before deploying a change. Instead of finding out a prompt change broke something in production, you run a simulation, review the outputs and evaluation scores, and only promote the change when you're confident it behaves correctly.
+
+<Note>
+  Simulations require the **Team** or **Scale** plan.
+</Note>
+
+## Core concepts
+
+<CardGroup cols={2}>
+  <Card title="Dataset" icon="database">
+    A collection of test cases. Each case has an input (the user message or prompt variables) and optionally an expected output or reference answer.
+  </Card>
+  <Card title="Scenario" icon="clipboard-list">
+    A test configuration: which dataset to use, which prompt version to test, which evaluators to run, and which model to call.
+  </Card>
+  <Card title="Simulation run" icon="play">
+    One execution of a scenario — the platform runs each dataset item through your LLM configuration and collects outputs and scores.
+  </Card>
+  <Card title="Batch run" icon="layers">
+    Multiple simulation runs executed in parallel, typically used to compare different prompt versions side by side.
+  </Card>
+</CardGroup>
+
+## Creating a dataset
+
+Before running simulations, you need a dataset of test cases.
+
+<Steps>
+  <Step title="Open the Simulations page">
+    Navigate to **Simulations** in the sidebar.
+  </Step>
+  <Step title="Click Datasets, then New dataset">
+    Name your dataset (e.g., `support-test-cases`) and add a description.
+  </Step>
+  <Step title="Add test items">
+    Each item has:
+    - **Input** — the user message or template variables to inject into your prompt
+    - **Expected output** (optional) — a reference answer for similarity scoring
+    - **Tags** — optional labels for grouping items
+
+    You can add items manually, paste them from a CSV, or import from a JSON file.
+  </Step>
+  <Step title="Save the dataset">
+    Click **Save**. The dataset is ready to use in a scenario.
+  </Step>
+</Steps>
+
+## Creating a scenario
+
+<Steps>
+  <Step title="Click New scenario">
+    On the Simulations page, click **New scenario**.
+  </Step>
+  <Step title="Choose a dataset">
+    Select the dataset of test cases to run against.
+  </Step>
+  <Step title="Configure the prompt">
+    Either select a prompt from your prompt library (by name and version/label) or paste a prompt directly into the editor.
+  </Step>
+  <Step title="Choose a model">
+    Select the model to call for each test case.
+  </Step>
+  <Step title="Add evaluators">
+    Attach one or more evaluators to score the outputs. You can use any evaluator defined on the Evaluations page, plus built-in ones:
+
+    | Evaluator | What it measures |
+    |-----------|----------------|
+    | `exact-match` | Whether the output exactly matches the expected value |
+    | `contains` | Whether the output contains a required substring |
+    | `similarity` | Semantic similarity to the expected output (0–1) |
+    | `length` | Whether the output length is within a specified range |
+    | Custom | Any LLM-judge evaluator you've defined |
+  </Step>
+  <Step title="Save the scenario">
+    Click **Save**. The scenario is ready to run.
+  </Step>
+</Steps>
+
+## Running a simulation
+
+Click **Run now** on any scenario to start a simulation run. LumiqTrace:
+
+1. Iterates over every item in the dataset
+2. Calls your chosen model with the prompt + item input
+3. Records the response, latency, token count, and cost
+4. Runs each configured evaluator on the output
+5. Aggregates results into a run summary
+
+Simulation runs appear in the **Run history** table. Click any run to see per-item results.
+
+## Batch runs — comparing versions
+
+A batch run executes the same dataset against multiple configurations simultaneously, making it easy to compare prompt versions head-to-head.
+
+<Steps>
+  <Step title="Click New batch run">
+    Select two or more scenarios (or one scenario with multiple prompt version variants).
+  </Step>
+  <Step title="Start the batch">
+    Click **Run batch**. All variants run in parallel.
+  </Step>
+  <Step title="Compare results">
+    When all runs complete, the comparison view shows side-by-side scores, latency, and cost for each variant. Rows with significant differences are highlighted.
+  </Step>
+</Steps>
+
+<Tip>
+  Use batch runs before promoting a prompt from `staging` to `production`. Run the current production version and the candidate version through the same dataset and only promote if the candidate scores better on your key evaluators.
+</Tip>
+
+## Reading run results
+
+Each simulation run's detail view shows:
+
+- **Summary cards** — average score per evaluator, total cost, average latency
+- **Per-item table** — each dataset item with its output, scores, and a link to the full trace
+- **Score distribution** — histogram of score spread across items
+- **Failed items** — items where the model returned an error or a score below threshold
+
+Click any item row to see the full output text and all evaluator scores for that item.
+
+## Plan limits
+
+| Plan | Datasets | Scenarios | Monthly simulation runs |
+|------|----------|-----------|------------------------|
+| Free | None | — | — |
+| Pro | 3 | 5 | 500 items total |
+| Team | Unlimited | Unlimited | 10,000 items/month |
+| Scale | Unlimited | Unlimited | Unlimited |
