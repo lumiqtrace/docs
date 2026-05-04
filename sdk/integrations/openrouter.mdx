@@ -1,0 +1,55 @@
+---
+title: "OpenRouter"
+sidebarTitle: "OpenRouter"
+description: "Trace calls made through OpenRouter's unified API with wrapOpenRouter()."
+icon: "route"
+---
+
+OpenRouter provides a unified API for 200+ models. Wrap your OpenRouter client with `wrapOpenRouter()` to trace every call, regardless of which underlying model is used.
+
+## Installation
+
+```bash
+npm install @lumiqtrace/sdk openai
+```
+
+OpenRouter uses an OpenAI-compatible API. Install `openai` as the client.
+
+## Setup
+
+```typescript
+import OpenAI from "openai";
+import { lumiqtrace } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+const openrouter = lumiqtrace.wrapOpenRouter(
+  new OpenAI({
+    baseURL: "https://openrouter.ai/api/v1",
+    apiKey: process.env.OPENROUTER_API_KEY!,
+  })
+);
+```
+
+## Example
+
+```typescript
+const response = await openrouter.chat.completions.create({
+  model: "anthropic/claude-sonnet-4-6",
+  messages: [{ role: "user", content: "What model are you?" }],
+});
+```
+
+## What gets captured
+
+| Field | Details |
+|-------|---------|
+| Model | The OpenRouter model identifier (e.g. `anthropic/claude-sonnet-4-6`) |
+| Input tokens | From OpenRouter's `usage` response field |
+| Output tokens | From OpenRouter's `usage` response field |
+| Cost | From OpenRouter's reported cost or calculated from tokens |
+| Latency | Total request duration |
+
+<Note>
+  Cost reporting accuracy depends on whether OpenRouter returns cost data in the response. For most popular models it does. For custom or fine-tuned routes, token-based calculation is used as a fallback.
+</Note>

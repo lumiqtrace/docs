@@ -1,0 +1,55 @@
+---
+title: "Agents"
+sidebarTitle: "Agents"
+description: "Per-agent performance dashboards — cost, latency, error rate, and tool usage broken down by agent."
+---
+
+The Agents view gives each agent in your registry its own performance dashboard. Where the Traces view shows individual runs, the Agents view aggregates metrics across all runs to answer questions like "which agent costs the most per run?" or "which agent has the worst error rate this week?"
+
+## Agent list
+
+The agent list shows all agents with at least one trace in the current date range, sorted by total cost descending by default.
+
+| Column | Details |
+|--------|---------|
+| Agent | Agent name from the SDK |
+| Runs | Total trace count in the selected period |
+| Avg cost | Average USD cost per run |
+| Avg latency | Average wall-clock duration per run |
+| Error rate | Percentage of runs that ended in error |
+| Last run | Timestamp of the most recent run |
+
+Click any agent to open its detail view.
+
+## Agent detail
+
+The agent detail view shows metrics for one agent across the selected time range.
+
+### Cost over time
+
+A time-series chart of total daily cost for this agent. Spikes indicate either increased usage volume or a specific run with abnormally high token consumption — click any spike to see the traces that contributed to it.
+
+### Latency percentiles
+
+P50, P95, and P99 latency for each day. Increasing P99 with stable P50 indicates occasional outlier runs — usually caused by retries or tool failures.
+
+### Error breakdown
+
+Errors grouped by type (model error, tool error, timeout, rate limit). The breakdown helps you prioritize: rate limit errors are solved by quota increases or backoff logic; tool errors need debugging in the tool implementation.
+
+### Tool usage
+
+A ranked list of tools this agent called, with total calls, failure count, and average latency per tool. Tools with high failure rates or high latency are the most common causes of poor agent performance.
+
+### Model usage
+
+All model identifiers used by this agent in the selected period, with token counts and cost attributed per model.
+
+## Comparing agents
+
+Return to the agent list and use the checkboxes to select 2–4 agents for side-by-side comparison. The comparison view shows cost, latency, and error rate on shared axes for the selected period.
+
+## Next steps
+
+- [Agent Registry](/dashboard/agent-registry) — topology view of all agents
+- [Costs](/dashboard/costs) — cost attribution across all dimensions

@@ -1,0 +1,44 @@
+---
+title: "Groq"
+sidebarTitle: "Groq"
+description: "Trace Groq inference calls with wrapGroq() — optimized for high-throughput, low-latency workloads."
+icon: "cpu"
+---
+
+Wrap your `Groq` client with `wrapGroq()` to trace every inference call, including latency breakdowns useful for Groq's fast inference speeds.
+
+## Installation
+
+```bash
+npm install @lumiqtrace/sdk groq-sdk
+```
+
+## Setup
+
+```typescript
+import Groq from "groq-sdk";
+import { lumiqtrace } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+const groq = lumiqtrace.wrapGroq(new Groq({ apiKey: process.env.GROQ_API_KEY! }));
+```
+
+## Example
+
+```typescript
+const completion = await groq.chat.completions.create({
+  model: "llama-3.3-70b-versatile",
+  messages: [{ role: "user", content: "Summarize this in one sentence." }],
+});
+```
+
+## What gets captured
+
+| Field | Details |
+|-------|---------|
+| Model | `llama-3.3-70b-versatile`, `mixtral-8x7b-32768`, `gemma2-9b-it`, etc. |
+| Input tokens | From `usage.prompt_tokens` |
+| Output tokens | From `usage.completion_tokens` |
+| Cost | Calculated from token counts and Groq pricing |
+| Latency | Total request duration (Groq latency is typically under 1s) |

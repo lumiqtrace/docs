@@ -1,0 +1,134 @@
+---
+title: "LumiqTrace MCP server"
+sidebarTitle: "LumiqTrace MCP"
+description: "Connect Claude Desktop, Cursor, or any MCP client to LumiqTrace to query your traces, metrics, and errors in natural language."
+icon: "plug"
+---
+
+LumiqTrace provides a hosted MCP (Model Context Protocol) server that lets you query your observability data directly from AI coding tools. Ask questions like "what were the slowest traces in the last hour?" or "run root cause analysis on trace abc123" — without leaving your editor.
+
+## Endpoint
+
+```
+https://api.lumiqtrace.com/v1/mcp
+```
+
+The server is hosted by LumiqTrace. No local process to run.
+
+## Authentication
+
+The MCP server uses personal API keys with the `lqtp_` prefix. These are separate from project SDK keys (`lqt_`) and are scoped to your user account.
+
+### Generate a personal API key
+
+Go to **Settings → MCP** in the LumiqTrace dashboard. Click **Generate key**, give it a name, and copy the key — it is shown only once.
+
+## Client configuration
+
+<Tabs>
+  <Tab title="Claude Desktop">
+    Open your Claude Desktop configuration file:
+
+    - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+    - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+    Add the `lumiqtrace` server entry:
+
+    ```json
+    {
+      "mcpServers": {
+        "lumiqtrace": {
+          "url": "https://api.lumiqtrace.com/v1/mcp",
+          "headers": {
+            "Authorization": "Bearer lqtp_YOUR_PERSONAL_API_KEY"
+          }
+        }
+      }
+    }
+    ```
+
+    Restart Claude Desktop. You should see LumiqTrace tools listed when you start a new conversation.
+  </Tab>
+  <Tab title="Cursor">
+    Open `~/.cursor/mcp.json` (create it if it doesn't exist) and add:
+
+    ```json
+    {
+      "mcpServers": {
+        "lumiqtrace": {
+          "url": "https://api.lumiqtrace.com/v1/mcp",
+          "headers": {
+            "Authorization": "Bearer lqtp_YOUR_PERSONAL_API_KEY"
+          }
+        }
+      }
+    }
+    ```
+
+    Reload Cursor. LumiqTrace tools will be available in Cursor's agent mode.
+  </Tab>
+  <Tab title="Claude Code">
+    Add the server to your Claude Code MCP config (`~/.claude/mcp.json`):
+
+    ```json
+    {
+      "mcpServers": {
+        "lumiqtrace": {
+          "url": "https://api.lumiqtrace.com/v1/mcp",
+          "headers": {
+            "Authorization": "Bearer lqtp_YOUR_PERSONAL_API_KEY"
+          }
+        }
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Other clients">
+    Any MCP-compatible client that supports HTTP with custom headers can connect. Use:
+
+    - **URL:** `https://api.lumiqtrace.com/v1/mcp`
+    - **Header:** `Authorization: Bearer lqtp_YOUR_PERSONAL_API_KEY`
+  </Tab>
+</Tabs>
+
+## Available tools
+
+The LumiqTrace MCP server exposes 9 tools:
+
+| Tool | Description |
+|------|-------------|
+| `list_projects` | List all projects your account has access to |
+| `get_project_overview` | Summary of recent activity — event count, error count, avg latency |
+| `query_traces` | Query traces with filters: model, status, time range, limit |
+| `get_trace` | Full detail of a single trace by trace ID |
+| `get_slow_traces` | Find the slowest traces in a given time window |
+| `get_metrics` | Aggregated cost, latency, and token usage grouped by model, hour, or day |
+| `get_errors` | Error breakdown grouped by error code, message, and model |
+| `natural_language_query` | Submit a natural language question about your observability data |
+| `root_cause_analysis` | Run root cause analysis on a failed trace |
+
+## Example prompts
+
+Once connected, you can ask your AI assistant:
+
+```
+What were the 5 slowest traces in my production project in the last 24 hours?
+```
+
+```
+Run root cause analysis on trace abc123 — why did it fail?
+```
+
+```
+Show me the cost breakdown by model for the last 7 days.
+```
+
+```
+Are there any error spikes in the last hour?
+```
+
+## Next steps
+
+- [API keys](/account/api-keys) — manage personal and project API keys
+- [Traces](/dashboard/traces) — explore traces in the dashboard
+- [LumiqPilot](/dashboard/lumiqpilot) — AI copilot built into the LumiqTrace dashboard

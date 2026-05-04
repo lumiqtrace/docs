@@ -1,0 +1,105 @@
+---
+title: "Testing and mocking"
+sidebarTitle: "Testing & mocking"
+description: "Disable LumiqTrace in tests, mock the SDK for unit testing, and configure CI environments."
+---
+
+LumiqTrace adds zero latency in production because events are batched asynchronously. In test environments, you want to ensure the SDK does not make network calls, slow down test suites, or leak API keys.
+
+## Disable tracing in tests
+
+Set `sampleRate` to `0` to drop all events before they reach the queue. No network calls are made.
+
+```typescript
+lumiqtrace.init({
+  apiKey: process.env.LUMIQTRACE_API_KEY ?? "lqt_test",
+  sampleRate: 0, // drop all events
+  environment: "test",
+});
+```
+
+You can also skip `lumiqtrace.init()` entirely in tests — the SDK is a no-op if not initialized. Calls to `wrapOpenAI()` and other wrappers return the original client unchanged.
+
+## Disable via environment variable
+
+If `LUMIQTRACE_API_KEY` is not set, the SDK does not initialize. In CI, simply omit the variable:
+
+```bash
+# .env.test — no LUMIQTRACE_API_KEY
+OPENAI_API_KEY=sk-...
+```
+
+Or guard initialization in your application code:
+
+```typescript
+if (process.env.LUMIQTRACE_API_KEY) {
+  lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY });
+}
+```
+
+## Mock the SDK in unit tests
+
+For unit tests that assert on span creation, mock the SDK module:
+
+```typescript
+// vitest
+import { vi, describe, it, expect } from "vitest";
+
+vi.mock("@lumiqtrace/sdk", () => ({
+  lumiqtrace: {
+    init: vi.fn(),
+    wrapOpenAI: (client: unknown) => client, // return client unchanged
+    wrapAnthropic: (client: unknown) => client,
+  },
+  withAgent: vi.fn(async (_opts, fn) => fn()),
+  startSpan: vi.fn(async (_opts, fn) => fn({ setAttributes: vi.fn() })),
+}));
+
+describe("my agent", () => {
+  it("calls the model once", async () => {
+    // your test — LumiqTrace SDK is a no-op
+  });
+});
+```
+
+## Use a test API key
+
+If you want the SDK initialized in integration tests but do not want real traces sent to LumiqTrace, set a dummy API key and point to a local mock server:
+
+```typescript
+lumiqtrace.init({
+  apiKey: "lqt_test_dummy",
+  endpoint: "http://localhost:4318", // local mock or equivalent
+  environment: "test",
+  sampleRate: 1.0,
+});
+```
+
+## Flush in tests
+
+If your test runner exits before the SDK flushes its event queue, traces may be silently dropped. Call `lumiqtrace.flush()` at the end of each test:
+
+```typescript
+afterEach(async () => {
+  await lumiqtrace.flush();
+});
+```
+
+## CI environment configuration
+
+In CI (GitHub Actions, CircleCI, etc.), set `environment` to `"ci"` and `sampleRate` to `0`:
+
+```yaml
+# .github/workflows/test.yml
+env:
+  LUMIQTRACE_API_KEY: ${{ secrets.LUMIQTRACE_API_KEY }}
+  LUMIQTRACE_SAMPLE_RATE: "0"
+  LUMIQTRACE_ENVIRONMENT: "ci"
+```
+
+The SDK reads `LUMIQTRACE_SAMPLE_RATE` as a number between `0.0` and `1.0`. Set it to `0` to drop all events in CI without changing application code.
+
+## Next steps
+
+- [Environments](/guides/environments) — separate production, staging, and development traces
+- [SDK configuration](/sdk/typescript) — full init options reference

@@ -1,0 +1,96 @@
+---
+title: "Anthropic"
+sidebarTitle: "Anthropic"
+description: "Trace Anthropic Claude API calls automatically — messages, tool use, and streaming — with wrapAnthropic()."
+icon: "message-circle"
+---
+
+Wrap your `Anthropic` client instance with `wrapAnthropic()`. Every `messages.create` call is traced automatically, including tool use and streaming responses.
+
+## Installation
+
+```bash
+npm install @lumiqtrace/sdk @anthropic-ai/sdk
+```
+
+## Setup
+
+```typescript
+import Anthropic from "@anthropic-ai/sdk";
+import { lumiqtrace } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+const anthropic = lumiqtrace.wrapAnthropic(new Anthropic());
+```
+
+## Example
+
+```typescript
+const message = await anthropic.messages.create({
+  model: "claude-sonnet-4-6",
+  max_tokens: 1024,
+  messages: [{ role: "user", content: "Explain observability in one paragraph." }],
+});
+```
+
+## What gets captured
+
+| Field | Details |
+|-------|---------|
+| Model | `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5`, etc. |
+| Input tokens | From `usage.input_tokens` |
+| Output tokens | From `usage.output_tokens` |
+| Cost | Calculated from token counts and Anthropic pricing |
+| Latency | Total time from request to first token (streaming) or full response |
+| Stop reason | `end_turn`, `max_tokens`, `tool_use`, `stop_sequence` |
+
+## Tool use
+
+Tool calls and tool results are captured as child spans under the message span.
+
+```typescript
+const message = await anthropic.messages.create({
+  model: "claude-sonnet-4-6",
+  max_tokens: 1024,
+  tools: [
+    {
+      name: "get_weather",
+      description: "Get current weather",
+      input_schema: {
+        type: "object",
+        properties: { location: { type: "string" } },
+        required: ["location"],
+      },
+    },
+  ],
+  messages: [{ role: "user", content: "What's the weather in Paris?" }],
+});
+```
+
+## Streaming
+
+Streaming responses are traced end-to-end. Token counts accumulate from `message_delta` events.
+
+```typescript
+const stream = anthropic.messages.stream({
+  model: "claude-haiku-4-5",
+  max_tokens: 512,
+  messages: [{ role: "user", content: "Count to ten." }],
+});
+
+for await (const chunk of stream) {
+  if (chunk.type === "content_block_delta") {
+    process.stdout.write(chunk.delta.text ?? "");
+  }
+}
+```
+
+<Note>
+  Enable `storePrompts: true` in `lumiqtrace.init()` to persist prompt and completion text. Off by default.
+</Note>
+
+## Next steps
+
+- [Agent tracing](/sdk/agent-tracing) — trace multi-turn Claude conversations as agents
+- [Guardrails](/sdk/guardrails) — enforce safety policies on Claude outputs

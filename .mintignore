@@ -5,3 +5,10 @@
 # Draft content
 drafts/
 *.draft.mdx
+
+superpowers
+
+# Internal API pages — not public SDK endpoints
+api-reference/ai-cost-optimizer.mdx
+api-reference/ai-nl-query.mdx
+api-reference/ai-root-cause.mdx

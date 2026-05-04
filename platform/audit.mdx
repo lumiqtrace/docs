@@ -1,0 +1,59 @@
+---
+title: "Audit log"
+sidebarTitle: "Audit log"
+description: "A tamper-evident log of every action taken in your LumiqTrace organization — who did what, and when."
+---
+
+The audit log records every significant action in your organization: project creation, API key generation, member role changes, guardrail updates, and billing changes. Each entry is timestamped and linked to the user or API key that performed the action.
+
+## Accessing the audit log
+
+Go to **Platform** → **Audit** in the sidebar. You need the `owner` or `admin` role to view the audit log.
+
+## What gets logged
+
+| Category | Events |
+|----------|--------|
+| **Organization** | Name change, SSO configuration, member added/removed, role changed |
+| **Projects** | Created, deleted, renamed |
+| **API keys** | Created, revoked, last-used timestamp updated |
+| **Guardrails** | Created, updated, enabled, disabled, deleted |
+| **Alerts** | Created, updated, triggered, deleted |
+| **Billing** | Plan upgraded, downgraded, payment method changed |
+| **Data export** | Export requested, export downloaded |
+| **Evaluations** | Template created, deleted |
+| **Prompts** | Version published, rolled back |
+
+## Audit entry fields
+
+Each entry contains:
+
+| Field | Description |
+|-------|------------|
+| Timestamp | UTC time the action occurred |
+| Actor | User email or API key prefix (`lqt_xxxx...`) |
+| Event | Machine-readable event name (e.g. `api_key.created`) |
+| Resource | The object that was affected (project ID, guardrail name, etc.) |
+| Details | Event-specific metadata (e.g. old and new role for role changes) |
+| IP address | Source IP of the request |
+
+## Filtering
+
+Filter audit entries by actor, event type, resource, and date range. Use the event type filter to focus on a specific category — for example, filter by `api_key.*` to see all key management activity.
+
+## Exporting
+
+Click **Export** to download a CSV of the current filtered view. Exports include all fields and are suitable for compliance reviews.
+
+<Note>
+  Audit log retention matches your plan's data retention period. On Scale, audit logs are retained for 1 year. On Team, 90 days. Upgrade your plan if you need longer retention for compliance.
+</Note>
+
+## Automated export
+
+For continuous compliance logging, set up a webhook that fires on audit events. See [Webhooks](/guides/webhooks) for configuration.
+
+## Next steps
+
+- [Security](/platform/security) — data handling, encryption, and access controls
+- [Organizations](/account/organizations) — team member roles and permissions

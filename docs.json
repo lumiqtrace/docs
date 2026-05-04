@@ -12,12 +12,12 @@
     "dark": "/logo/dark.svg"
   },
   "appearance": {
-    "default": "system"
+    "default": "dark"
   },
   "fonts": {
-    "family": "Inter",
+    "family": "Manrope",
     "heading": {
-      "family": "Inter",
+      "family": "Sora",
       "weight": 700
     }
   },
@@ -32,6 +32,18 @@
         "dark": "one-dark-pro"
       }
     }
+  },
+  "feedback": {
+    "thumbsRating": true,
+    "suggestEdit": true,
+    "raiseIssue": true
+  },
+  "seo": {
+    "indexing": "all"
+  },
+  "metadata": {
+    "og:site_name": "LumiqTrace Docs",
+    "og:image": "https://docs.lumiqtrace.com/images/og.png"
   },
   "navbar": {
     "links": [
@@ -71,7 +83,7 @@
     },
     "tabs": [
       {
-        "tab": "Documentation",
+        "tab": "SDK & Integrations",
         "groups": [
           {
             "group": "Get Started",
@@ -83,16 +95,7 @@
             ]
           },
           {
-            "group": "Guides",
-            "pages": [
-              "guides/environments",
-              "guides/serverless",
-              "guides/production-checklist",
-              "guides/webhooks"
-            ]
-          },
-          {
-            "group": "SDK — TypeScript",
+            "group": "TypeScript SDK",
             "pages": [
               "sdk/typescript",
               "sdk/agent-tracing",
@@ -104,7 +107,7 @@
             ]
           },
           {
-            "group": "SDK — Python",
+            "group": "Python SDK",
             "pages": [
               "sdk/python",
               "sdk/fastapi-middleware",
@@ -114,55 +117,153 @@
           {
             "group": "Integrations",
             "pages": [
-              "sdk/langchain",
-              "sdk/google-adk",
-              "sdk/integrations"
+              "sdk/integrations/openai",
+              "sdk/integrations/anthropic",
+              "sdk/integrations/google-genai",
+              "sdk/integrations/bedrock",
+              "sdk/integrations/openrouter",
+              "sdk/integrations/mistral",
+              "sdk/integrations/groq",
+              "sdk/integrations/litellm",
+              "sdk/integrations/langchain",
+              "sdk/integrations/google-adk"
             ]
           },
           {
-            "group": "Dashboard",
+            "group": "MCP Server",
             "pages": [
-              "dashboard/overview",
+              "guides/lumiqtrace-mcp"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/environments",
+              "guides/serverless",
+              "guides/production-checklist",
+              "guides/webhooks",
+              "guides/testing-and-mocking"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Dashboard",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "dashboard/overview"
+            ]
+          },
+          {
+            "group": "Traces & Sessions",
+            "pages": [
               "dashboard/traces",
-              "dashboard/costs",
-              "dashboard/performance",
-              "dashboard/alerts",
+              "dashboard/sessions"
+            ]
+          },
+          {
+            "group": "Agents",
+            "pages": [
+              "dashboard/agent-registry",
+              "dashboard/agents"
+            ]
+          },
+          {
+            "group": "Costs",
+            "pages": [
+              "dashboard/costs"
+            ]
+          },
+          {
+            "group": "Quality",
+            "pages": [
               "dashboard/evaluations",
               "dashboard/guardrails",
-              "dashboard/prompts",
               "dashboard/simulations",
+              "dashboard/datasets"
+            ]
+          },
+          {
+            "group": "Reliability",
+            "pages": [
+              "dashboard/alerts",
               "dashboard/incidents",
-              "dashboard/sessions",
+              "dashboard/errors"
+            ]
+          },
+          {
+            "group": "AI Features",
+            "pages": [
               "dashboard/lumiqpilot",
               "dashboard/ai-features"
             ]
           },
           {
-            "group": "Account & Billing",
+            "group": "Prompts & Tools",
+            "pages": [
+              "dashboard/prompts",
+              "dashboard/tools"
+            ]
+          },
+          {
+            "group": "Performance",
+            "pages": [
+              "dashboard/performance"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Platform",
+        "groups": [
+          {
+            "group": "Deployment",
+            "pages": [
+              "platform/self-hosting",
+              "platform/environment-variables"
+            ]
+          },
+          {
+            "group": "Security & Compliance",
+            "pages": [
+              "platform/security",
+              "platform/audit"
+            ]
+          },
+          {
+            "group": "Account",
             "pages": [
               "account/organizations",
               "account/api-keys",
               "account/billing"
             ]
-          },
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
           {
-            "group": "Platform",
+            "group": "API Reference",
             "pages": [
-              "platform/self-hosting",
-              "platform/environment-variables",
-              "platform/security"
-            ]
-          },
-          {
-            "group": "Reference",
-            "pages": [
-              "reference/span-kinds",
-              "reference/models",
-              "reference/changelog"
+              "api-reference/authentication",
+              "api-reference/ingest",
+              "api-reference/otel",
+              "api-reference/events",
+              "api-reference/traces",
+              "api-reference/metrics",
+              "api-reference/errors"
             ]
           }
         ]
       }
+    ],
+    "redirects": [
+      { "source": "/sdk/langchain", "destination": "/sdk/integrations/langchain" },
+      { "source": "/sdk/google-adk", "destination": "/sdk/integrations/google-adk" },
+      { "source": "/sdk/integrations", "destination": "/sdk/integrations/openai" }
     ]
   }
 }

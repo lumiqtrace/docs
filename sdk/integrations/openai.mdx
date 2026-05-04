@@ -1,0 +1,87 @@
+---
+title: "OpenAI"
+sidebarTitle: "OpenAI"
+description: "Trace OpenAI chat completions, embeddings, and responses automatically with two lines of code."
+icon: "openai"
+---
+
+Wrap your `OpenAI` client instance with `wrapOpenAI()`. Every call your existing code makes is traced automatically — no changes to call sites required.
+
+## Installation
+
+```bash
+npm install @lumiqtrace/sdk openai
+```
+
+## Setup
+
+```typescript
+import OpenAI from "openai";
+import { lumiqtrace } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+const openai = lumiqtrace.wrapOpenAI(new OpenAI());
+```
+
+Pass the wrapped client to any function that makes OpenAI calls. The client is a drop-in replacement — its API is identical.
+
+## Example
+
+```typescript
+const response = await openai.chat.completions.create({
+  model: "gpt-4o",
+  messages: [{ role: "user", content: "Summarize this document." }],
+});
+```
+
+LumiqTrace captures this call as a span with model, prompt tokens, completion tokens, latency, and cost.
+
+## What gets captured
+
+| Field | Details |
+|-------|---------|
+| Model | `gpt-4o`, `gpt-4o-mini`, `o1`, etc. |
+| Input tokens | From `usage.prompt_tokens` |
+| Output tokens | From `usage.completion_tokens` |
+| Cost | Calculated from token counts and OpenAI pricing |
+| Latency | Total time from request to response |
+| Status | `success` or `error` with error message |
+| Finish reason | `stop`, `length`, `tool_calls`, `content_filter` |
+
+## Streaming
+
+`wrapOpenAI()` supports streaming responses. Token counts are accumulated from the stream chunks.
+
+```typescript
+const stream = await openai.chat.completions.create({
+  model: "gpt-4o",
+  messages: [{ role: "user", content: "Write a poem." }],
+  stream: true,
+});
+
+for await (const chunk of stream) {
+  process.stdout.write(chunk.choices[0]?.delta?.content ?? "");
+}
+```
+
+## Embeddings
+
+Embedding calls are traced with model, token count, and latency. Cost is calculated from the embedding model pricing.
+
+```typescript
+const embedding = await openai.embeddings.create({
+  model: "text-embedding-3-small",
+  input: "The quick brown fox",
+});
+```
+
+<Note>
+  `storePrompts` must be `true` in `lumiqtrace.init()` to store prompt text alongside traces. Disabled by default for privacy.
+</Note>
+
+## Next steps
+
+- [Agent tracing](/sdk/agent-tracing) — wrap multi-step agent logic
+- [Manual spans](/sdk/manual-spans) — add custom spans around non-LLM operations
+- [PII redaction](/sdk/pii-redaction) — automatically redact sensitive data before storage

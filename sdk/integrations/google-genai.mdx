@@ -1,0 +1,62 @@
+---
+title: "Google Generative AI"
+sidebarTitle: "Google GenAI"
+description: "Trace Gemini API calls — generateContent, chat, and streaming — with wrapGoogle()."
+icon: "sparkles"
+---
+
+Wrap your `GoogleGenerativeAI` client with `wrapGoogle()`. All `generateContent` and chat calls are traced automatically.
+
+## Installation
+
+```bash
+npm install @lumiqtrace/sdk @google/generative-ai
+```
+
+## Setup
+
+```typescript
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { lumiqtrace } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+const genAI = lumiqtrace.wrapGoogle(new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!));
+```
+
+## Example
+
+```typescript
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+const result = await model.generateContent("Explain token pricing in two sentences.");
+console.log(result.response.text());
+```
+
+## What gets captured
+
+| Field | Details |
+|-------|---------|
+| Model | `gemini-2.5-flash`, `gemini-2.5-pro`, etc. |
+| Input tokens | From `usageMetadata.promptTokenCount` |
+| Output tokens | From `usageMetadata.candidatesTokenCount` |
+| Cost | Calculated from token counts and Google pricing |
+| Latency | Total request duration |
+| Finish reason | `STOP`, `MAX_TOKENS`, `SAFETY`, etc. |
+
+## Chat sessions
+
+```typescript
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+const chat = model.startChat();
+
+const result = await chat.sendMessage("What is LumiqTrace?");
+console.log(result.response.text());
+```
+
+Each `sendMessage` call is traced as a separate span in the session.
+
+## Next steps
+
+- [Google ADK](/sdk/integrations/google-adk) — trace full ADK agents built with Gemini
+- [Agent tracing](/sdk/agent-tracing) — wrap multi-agent workflows

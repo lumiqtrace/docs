@@ -1,0 +1,45 @@
+---
+title: "Mistral"
+sidebarTitle: "Mistral"
+description: "Trace Mistral AI API calls with wrapMistral()."
+icon: "zap"
+---
+
+Wrap your `MistralClient` with `wrapMistral()` to trace chat and completion calls.
+
+## Installation
+
+```bash
+npm install @lumiqtrace/sdk @mistralai/mistralai
+```
+
+## Setup
+
+```typescript
+import { Mistral } from "@mistralai/mistralai";
+import { lumiqtrace } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+const mistral = lumiqtrace.wrapMistral(new Mistral({ apiKey: process.env.MISTRAL_API_KEY! }));
+```
+
+## Example
+
+```typescript
+const response = await mistral.chat.complete({
+  model: "mistral-large-latest",
+  messages: [{ role: "user", content: "Explain embeddings briefly." }],
+});
+```
+
+## What gets captured
+
+| Field | Details |
+|-------|---------|
+| Model | `mistral-large-latest`, `mistral-small-latest`, `codestral-latest`, etc. |
+| Input tokens | From `usage.prompt_tokens` |
+| Output tokens | From `usage.completion_tokens` |
+| Cost | Calculated from token counts and Mistral pricing |
+| Latency | Total request duration |
+| Finish reason | `stop`, `length`, `tool_calls` |

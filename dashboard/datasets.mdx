@@ -1,0 +1,54 @@
+---
+title: "Datasets"
+sidebarTitle: "Datasets"
+description: "Manage evaluation datasets — create from traces, upload CSV, and run batch evaluations."
+---
+
+Datasets are collections of input/output pairs used to evaluate your agents systematically. You can build datasets from real traces, upload them as CSV, or populate them manually. Once created, run any evaluation template against the dataset to measure quality at scale.
+
+## Creating a dataset
+
+### From traces
+
+The fastest way to build a dataset is from existing traces:
+
+1. Open **Traces** and filter to the runs you want to evaluate
+2. Select one or more trace rows using the checkboxes
+3. Click **Add to dataset** → choose an existing dataset or create a new one
+
+The trace's input (prompt or agent instruction) and output (completion or agent response) are added as a row.
+
+### By uploading CSV
+
+Upload a CSV file with columns matching the dataset schema. Required columns:
+
+| Column | Description |
+|--------|------------|
+| `input` | The prompt or instruction sent to the agent |
+| `output` | The agent's response to evaluate |
+| `expected` | (Optional) The ground truth answer for comparison evaluators |
+
+Go to **Datasets** → **New dataset** → **Upload CSV** and select your file.
+
+### Manually
+
+Add rows one at a time using the **Add row** button. Useful for small curated datasets of known edge cases.
+
+## Running evaluations
+
+Select a dataset and click **Run evaluation**. Choose an evaluation template and configure:
+
+- **Evaluator** — the LLM judge and prompt template to use
+- **Sample size** — evaluate all rows or a random sample
+- **Concurrency** — how many rows to evaluate in parallel
+
+Results appear in the **Evaluations** section linked to this dataset run.
+
+## Dataset versioning
+
+Each dataset has a version history. When you add or remove rows, the previous version is preserved. Evaluation runs are tied to a specific dataset version so results remain reproducible.
+
+## Next steps
+
+- [Evaluations](/dashboard/evaluations) — run and review evaluation results
+- [Simulations](/dashboard/simulations) — test prompt changes against a dataset before deploying

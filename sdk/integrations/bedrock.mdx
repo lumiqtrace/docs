@@ -1,0 +1,57 @@
+---
+title: "AWS Bedrock"
+sidebarTitle: "AWS Bedrock"
+description: "Trace Amazon Bedrock model invocations with wrapBedrock()."
+icon: "cloud"
+---
+
+Wrap your `BedrockRuntimeClient` with `wrapBedrock()` to trace all model invocations through the Bedrock API.
+
+## Installation
+
+```bash
+npm install @lumiqtrace/sdk @aws-sdk/client-bedrock-runtime
+```
+
+## Setup
+
+```typescript
+import { BedrockRuntimeClient } from "@aws-sdk/client-bedrock-runtime";
+import { lumiqtrace } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+const bedrock = lumiqtrace.wrapBedrock(new BedrockRuntimeClient({ region: "us-east-1" }));
+```
+
+## Example
+
+```typescript
+import { InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+
+const response = await bedrock.send(
+  new InvokeModelCommand({
+    modelId: "anthropic.claude-sonnet-4-6-v1",
+    body: JSON.stringify({
+      anthropic_version: "bedrock-2023-05-31",
+      max_tokens: 512,
+      messages: [{ role: "user", content: "Summarize observability in two sentences." }],
+    }),
+    contentType: "application/json",
+  })
+);
+```
+
+## What gets captured
+
+| Field | Details |
+|-------|---------|
+| Model | Bedrock model ID (e.g. `anthropic.claude-sonnet-4-6-v1`) |
+| Input tokens | Parsed from the model response body |
+| Output tokens | Parsed from the model response body |
+| Cost | Calculated from token counts and Bedrock pricing |
+| Latency | Total invocation duration |
+
+<Note>
+  Token extraction requires the model response body to include usage metadata. All Anthropic and Llama models on Bedrock return this. Check your model's response schema if tokens show as zero.
+</Note>

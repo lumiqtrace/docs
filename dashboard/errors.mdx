@@ -1,0 +1,49 @@
+---
+title: "Errors"
+sidebarTitle: "Errors"
+description: "Track, group, and triage errors across your agents — model errors, tool failures, timeouts, and rate limits."
+---
+
+The Errors view aggregates failures from all your agent traces into a structured error log. Instead of hunting through individual traces, you see errors grouped by type and agent so you can triage at scale.
+
+## Error types
+
+LumiqTrace classifies errors into four categories:
+
+| Type | Description |
+|------|------------|
+| **Model error** | The LLM returned an error response (e.g. content policy violation, invalid request) |
+| **Tool error** | A tool call threw an exception or returned an error status |
+| **Timeout** | A span exceeded its deadline — either an LLM call or a tool invocation |
+| **Rate limit** | A 429 response from a model provider |
+
+## Error list
+
+The error list shows all errors in the selected time range, with:
+
+- Error message (truncated to 200 characters)
+- Error type
+- Agent that produced the error
+- Model (for model errors)
+- Tool name (for tool errors)
+- Timestamp and count (how many times this exact error occurred)
+
+Errors with identical messages and sources are grouped automatically. A group showing 47 occurrences means the same error happened 47 times — not 47 unique bugs.
+
+## Filtering
+
+Filter by error type, agent, model, environment, or date range. The **Only new** toggle shows only errors that first appeared in the selected period — useful for spotting regressions after a deployment.
+
+## Opening the source trace
+
+Click any error row to open the trace that produced it. The flame graph highlights the failed span so you can see the full context — what the agent was doing when the error occurred, what inputs led to it, and what happened immediately before.
+
+## Error rate metrics
+
+The error rate chart at the top of the page shows errors per hour over the selected period. A flat baseline with sudden spikes indicates an external event (provider outage, a bad deployment). A gradually increasing baseline indicates a growing problem.
+
+## Next steps
+
+- [Incidents](/dashboard/incidents) — AI-detected anomalies, including error surges
+- [Alerts](/dashboard/alerts) — set up notifications when error rates exceed a threshold
+- [Traces](/dashboard/traces) — investigate individual failed runs

@@ -1,0 +1,48 @@
+---
+title: "LiteLLM"
+sidebarTitle: "LiteLLM"
+description: "Trace LiteLLM calls across any provider with wrapLiteLLM()."
+icon: "layers"
+---
+
+LiteLLM provides a unified interface for 100+ LLM providers. Wrap your LiteLLM client with `wrapLiteLLM()` to trace all calls regardless of provider.
+
+## Installation
+
+```bash
+npm install @lumiqtrace/sdk litellm
+```
+
+## Setup
+
+```typescript
+import { LiteLLM } from "litellm";
+import { lumiqtrace } from "@lumiqtrace/sdk";
+
+lumiqtrace.init({ apiKey: process.env.LUMIQTRACE_API_KEY! });
+
+const litellm = lumiqtrace.wrapLiteLLM(new LiteLLM());
+```
+
+## Example
+
+```typescript
+const response = await litellm.completion({
+  model: "gpt-4o",
+  messages: [{ role: "user", content: "What is observability?" }],
+});
+```
+
+## What gets captured
+
+| Field | Details |
+|-------|---------|
+| Model | The model string passed to LiteLLM (e.g. `gpt-4o`, `claude-sonnet-4-6`, `gemini/gemini-2.5-flash`) |
+| Input tokens | From LiteLLM's normalized `usage` field |
+| Output tokens | From LiteLLM's normalized `usage` field |
+| Cost | From LiteLLM's `_hidden_params.response_cost` if available, otherwise token-based |
+| Latency | Total call duration |
+
+<Note>
+  LiteLLM normalizes provider responses. If a provider returns cost data, LiteLLM exposes it in `_hidden_params.response_cost` — LumiqTrace uses this when available for more accurate cost attribution.
+</Note>
